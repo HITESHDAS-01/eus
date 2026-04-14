@@ -8,6 +8,15 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
+  const settingLabels: Record<string, string> = {
+    'penalty_percentage': 'Penalty Percentage (%)',
+    'loan_eligibility_percent': 'Loan Eligibility (%)',
+    'monthly_due_day': 'Monthly Due Day (Date)',
+    'roi_category_b': 'Category B Interest Rate (%)',
+    'roi_category_c_24': 'Category C (24 Months) Interest Rate (%)',
+    'roi_category_c_36': 'Category C (36 Months) Interest Rate (%)',
+  };
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -62,7 +71,7 @@ export function Settings() {
             <div key={setting.id} className="flex items-center justify-between border-b border-gray-50 pb-4">
               <div className="flex-1">
                 <Label className="text-base font-semibold text-gray-800">
-                  {setting.key.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  {settingLabels[setting.key] || setting.key.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                 </Label>
                 <p className="text-xs text-gray-500 mt-1">System configuration key: {setting.key}</p>
               </div>

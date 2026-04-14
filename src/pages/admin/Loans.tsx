@@ -15,6 +15,7 @@ export function Loans() {
   // Disburse Form State
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [disburseAmount, setDisburseAmount] = useState('');
+  const [interestRate, setInterestRate] = useState('2');
   const [disburseDate, setDisburseDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [eligibility, setEligibility] = useState(0);
   
@@ -80,9 +81,30 @@ export function Loans() {
     const id = e.target.value;
     setSelectedMemberId(id);
     const member = members.find(m => m.id === id);
-    if (member) setEligibility(member.maxLoan);
-    else setEligibility(0);
+    if (member) {
+      setEligibility(member.maxLoan);
+      setInterestRate(member.loan_interest_rate?.toString() || '2');
+    } else {
+      setEligibility(0);
+      setInterestRate('2');
+    }
   };
+
+  // Auto-fill outstanding info when loan selected
+  useEffect(() => {
+    if (selectedLoanId) {
+      const loan = activeLoans.find(l => l.id === selectedLoanId);
+      if (loan) {
+        // Simple calculation: 1 month interest
+        const interestDue = (Number(loan.remaining_principal) * Number(loan.interest_rate)) / 100;
+        setRepayInterest(interestDue.toString());
+        // We don't auto-fill principal to avoid accidental full repayment, but we can show it in UI
+      }
+    } else {
+      setRepayInterest('');
+      setRepayPrincipal('');
+    }
+  }, [selectedLoanId, activeLoans]);
 
   const handleDisburse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +120,7 @@ export function Loans() {
         .insert({
           member_id: selectedMemberId,
           principal_amount: Number(disburseAmount),
-          interest_rate: member.loan_interest_rate,
+          interest_rate: Number(interestRate),
           disbursed_date: disburseDate,
           remaining_principal: Number(disburseAmount),
           approved_by: user?.id
@@ -223,9 +245,14 @@ export function Loans() {
                 <Input type="date" value={disburseDate} onChange={(e) => setDisburseDate(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label>Loan Amount (₹)</Label>
-                <Input type="number" value={disburseAmount} onChange={(e) => setDisburseAmount(e.target.value)} required min="1" max={eligibility || undefined} />
+                <Label>Interest Rate (% per month)</Label>
+                <Input type="number" step="0.1" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} required min="0" />
               </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Loan Amount (₹)</Label>
+              <Input type="number" value={disburseAmount} onChange={(e) => setDisburseAmount(e.target.value)} required min="1" max={eligibility || undefined} />
             </div>
 
             <Button type="submit" className="w-full" disabled={formLoading || !selectedMemberId}>
@@ -251,6 +278,23 @@ export function Loans() {
               </select>
             </div>
 
+            {selectedLoanId && (
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col gap-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-blue-800 font-medium">Outstanding Principal:</span>
+                  <span className="text-lg font-bold text-blue-900">
+                    {formatCurrency(activeLoans.find(l => l.id === selectedLoanId)?.remaining_principal || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-blue-800 font-medium">Estimated Interest (1 mo):</span>
+                  <span className="text-lg font-bold text-blue-900">
+                    {formatCurrency((Number(activeLoans.find(l => l.id === selectedLoanId)?.remaining_principal || 0) * Number(activeLoans.find(l => l.id === selectedLoanId)?.interest_rate || 0)) / 100)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Payment Date</Label>
@@ -273,6 +317,46 @@ export function Loans() {
             </Button>
           </form>
         )}
+      </div>
+
+      {/* Active Loans Summary Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-bold text-gray-800">Active Loans Summary</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th className="p-4 font-medium">Member</th>
+                <th className="p-4 font-medium">Disbursed Date</th>
+                <th className="p-4 font-medium text-right">Original Amount</th>
+                <th className="p-4 font-medium text-right">Interest Rate</th>
+                <th className="p-4 font-medium text-right">Outstanding Principal</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                <tr><td colSpan={5} className="p-8 text-center text-gray-500">Loading...</td></tr>
+              ) : activeLoans.length === 0 ? (
+                <tr><td colSpan={5} className="p-8 text-center text-gray-500">No active loans found.</td></tr>
+              ) : (
+                activeLoans.map((loan) => (
+                  <tr key={loan.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-4">
+                      <div className="font-bold text-gray-800">{loan.members?.profiles?.full_name}</div>
+                      <div className="text-xs text-gray-500">{loan.members?.member_code}</div>
+                    </td>
+                    <td className="p-4 text-gray-600">{format(new Date(loan.disbursed_date), 'dd MMM yyyy')}</td>
+                    <td className="p-4 text-right font-medium">{formatCurrency(loan.principal_amount)}</td>
+                    <td className="p-4 text-right text-gray-600">{loan.interest_rate}% / mo</td>
+                    <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(loan.remaining_principal)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

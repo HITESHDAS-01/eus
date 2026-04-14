@@ -12,6 +12,7 @@ export function AdminHome() {
     totalPenaltyCollected: 0,
     totalInterestEarned: 0,
     maturedMembersCount: 0,
+    pendingInstallments: 0,
   });
   const [recentTx, setRecentTx] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,14 +44,27 @@ export function AdminHome() {
 
       const totalTreasury = totalInitial + totalInstallments + totalPenalty + totalInterest - activeLoansTotal;
 
-      // 4. Current Month Collection
+      // 4. Current Month Collection & Pending Installments
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      
       const { data: currentMonthTx } = await supabase
         .from('savings_installments')
-        .select('amount, penalty')
+        .select('amount, penalty, member_id')
         .gte('payment_date', startOfMonth.toISOString());
       const currentMonthTotal = currentMonthTx?.reduce((sum, tx) => sum + Number(tx.amount) + Number(tx.penalty), 0) || 0;
+
+      // Calculate pending installments
+      const { data: activeACMembers } = await supabase
+        .from('members')
+        .select('id')
+        .in('category', ['A', 'C'])
+        .eq('status', 'active');
+      
+      const totalACMembers = activeACMembers?.length || 0;
+      const paidMemberIds = new Set(currentMonthTx?.map(tx => tx.member_id));
+      const pendingInstallments = Math.max(0, totalACMembers - paidMemberIds.size);
 
       setStats({
         totalTreasury,
@@ -60,6 +74,7 @@ export function AdminHome() {
         totalPenaltyCollected: totalPenalty,
         totalInterestEarned: totalInterest,
         maturedMembersCount: 0, // Will be calculated in Reports
+        pendingInstallments,
       });
 
       // 5. Recent Transactions
@@ -144,6 +159,14 @@ export function AdminHome() {
           </div>
           <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Matured Members</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.maturedMembersCount}</p>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-clock text-6xl text-amber-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Pending Installments</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.pendingInstallments}</p>
         </div>
       </div>
 

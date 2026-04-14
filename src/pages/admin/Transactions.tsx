@@ -12,6 +12,10 @@ export function Transactions() {
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  // Filter State
+  const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [filterMember, setFilterMember] = useState('All');
+
   // Form State
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [amount, setAmount] = useState('');
@@ -113,6 +117,13 @@ export function Transactions() {
     }
   };
 
+  const filteredTransactions = transactions.filter(tx => {
+    const txMonth = format(new Date(tx.payment_date), 'yyyy-MM');
+    const matchesMonth = filterMonth === '' || txMonth === filterMonth;
+    const matchesMember = filterMember === 'All' || tx.member_id === filterMember;
+    return matchesMonth && matchesMember;
+  });
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -120,6 +131,34 @@ export function Transactions() {
         <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
           <i className="fas fa-plus"></i> Record Installment
         </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="w-full sm:w-48">
+          <Label className="text-xs text-gray-500 mb-1 block">Month</Label>
+          <Input 
+            type="month" 
+            value={filterMonth} 
+            onChange={(e) => setFilterMonth(e.target.value)} 
+            className="w-full"
+          />
+        </div>
+        <div className="flex-1">
+          <Label className="text-xs text-gray-500 mb-1 block">Member</Label>
+          <select
+            value={filterMember}
+            onChange={(e) => setFilterMember(e.target.value)}
+            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1e5a48] focus:border-transparent bg-white"
+          >
+            <option value="All">All Members</option>
+            {members.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.member_code} - {m.profiles?.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Transactions Table */}
@@ -139,10 +178,10 @@ export function Transactions() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">Loading...</td></tr>
-              ) : transactions.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">No transactions found.</td></tr>
+              ) : filteredTransactions.length === 0 ? (
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">No transactions found for selected filters.</td></tr>
               ) : (
-                transactions.map((tx) => (
+                filteredTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50">
                     <td className="p-4">{format(new Date(tx.payment_date), 'dd MMM yyyy')}</td>
                     <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>

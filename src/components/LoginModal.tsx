@@ -57,7 +57,7 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     setLoading(false);
     if (success) {
       onClose();
-      navigate('/member/dashboard');
+      navigate('/member');
     } else {
       setError('Invalid Member ID.');
       generateCaptcha();
@@ -77,7 +77,7 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     setLoading(false);
     if (success) {
       onClose();
-      navigate('/admin/dashboard');
+      navigate('/admin');
     } else {
       setError('Invalid email or password.');
     }
