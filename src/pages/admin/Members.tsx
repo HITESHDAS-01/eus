@@ -1,0 +1,341 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
+import { Button, Input, Label } from '../../components/ui/basic';
+import { formatCurrency } from '../../lib/utils';
+import { format } from 'date-fns';
+
+export function Members() {
+  const [members, setMembers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+
+  // Form State
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [memberCode, setMemberCode] = useState('');
+  const [joinDate, setJoinDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [category, setCategory] = useState('C');
+  const [initialInvestment, setInitialInvestment] = useState('');
+  const [term, setTerm] = useState('24');
+  const [status, setStatus] = useState('active');
+  const [formLoading, setFormLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchMembers();
+  }, []);
+
+  const fetchMembers = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select(`
+          *,
+          profiles (full_name, phone)
+        `)
+        .order('join_date', { ascending: false });
+      
+      if (error) throw error;
+      if (data) setMembers(data);
+    } catch (err) {
+      console.error('Error fetching members:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openAddModal = () => {
+    setFullName(''); setPhone(''); setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd')); setCategory('C'); setInitialInvestment(''); setTerm('24'); setStatus('active');
+    setEditingMemberId(null);
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (member: any) => {
+    setFullName(member.profiles?.full_name || '');
+    setPhone(member.profiles?.phone || '');
+    setMemberCode(member.member_code || '');
+    setJoinDate(member.join_date || format(new Date(), 'yyyy-MM-dd'));
+    setCategory(member.category || 'C');
+    setInitialInvestment(member.initial_investment?.toString() || '');
+    setTerm(member.chosen_term_months?.toString() || '24');
+    setStatus(member.status || 'active');
+    setEditingMemberId(member.id);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteMember = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this member? This action cannot be undone.')) return;
+    
+    try {
+      // Delete from members first (due to foreign key constraints if any, though profiles is the parent)
+      const { error: memberError } = await supabase.from('members').delete().eq('id', id);
+      if (memberError) throw memberError;
+
+      const { error: profileError } = await supabase.from('profiles').delete().eq('id', id);
+      if (profileError) throw profileError;
+
+      fetchMembers();
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to delete member: ' + err.message);
+    }
+  };
+
+  const handleSaveMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormLoading(true);
+    setError('');
+
+    try {
+      if (editingMemberId) {
+        // Update existing member
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            full_name: fullName,
+            phone: phone || null,
+          })
+          .eq('id', editingMemberId);
+          
+        if (profileError) throw profileError;
+
+        const { error: memberError } = await supabase
+          .from('members')
+          .update({
+            member_code: memberCode.trim() !== '' ? memberCode.trim() : undefined,
+            join_date: joinDate,
+            category: category,
+            status: status,
+            initial_investment: category === 'C' ? 0 : Number(initialInvestment),
+            chosen_term_months: category === 'B' ? 36 : Number(term),
+            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? 100 : null)
+          })
+          .eq('id', editingMemberId);
+
+        if (memberError) throw memberError;
+        setIsEditModalOpen(false);
+      } else {
+        // Add new member
+        const newId = crypto.randomUUID();
+        
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: newId,
+            full_name: fullName,
+            phone: phone || null,
+            role: 'member'
+          });
+          
+        if (profileError) throw profileError;
+
+        const { error: memberError } = await supabase
+          .from('members')
+          .insert({
+            id: newId,
+            member_code: memberCode.trim() !== '' ? memberCode.trim() : undefined,
+            join_date: joinDate,
+            category: category,
+            initial_investment: category === 'C' ? 0 : Number(initialInvestment),
+            chosen_term_months: category === 'B' ? 36 : Number(term),
+            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? 100 : null)
+          });
+
+        if (memberError) throw memberError;
+        setIsAddModalOpen(false);
+      }
+
+      fetchMembers(); // Refresh the list
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to save member.');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">Members Directory</h2>
+        <Button onClick={openAddModal} className="gap-2">
+          <i className="fas fa-user-plus"></i> Add New Member
+        </Button>
+      </div>
+
+      {/* Members Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th className="p-4 font-medium">Member ID</th>
+                <th className="p-4 font-medium">Name</th>
+                <th className="p-4 font-medium">Phone</th>
+                <th className="p-4 font-medium">Category</th>
+                <th className="p-4 font-medium">Join Date</th>
+                <th className="p-4 font-medium">Status</th>
+                <th className="p-4 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-gray-500">Loading members...</td>
+                </tr>
+              ) : members.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-gray-500">No members found. Add one to get started!</td>
+                </tr>
+              ) : (
+                members.map((member) => (
+                  <tr key={member.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-4 font-mono font-medium text-[#1e5a48]">{member.member_code}</td>
+                    <td className="p-4 font-bold text-gray-800">{member.profiles?.full_name}</td>
+                    <td className="p-4 text-gray-600">{member.profiles?.phone}</td>
+                    <td className="p-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        member.category === 'A' ? 'bg-purple-100 text-purple-700' :
+                        member.category === 'B' ? 'bg-blue-100 text-blue-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        Cat {member.category}
+                      </span>
+                    </td>
+                    <td className="p-4 text-gray-600">{format(new Date(member.join_date), 'dd MMM yyyy')}</td>
+                    <td className="p-4">
+                      <span className="bg-green-50 text-green-600 px-2 py-1 rounded text-xs font-medium border border-green-200">
+                        {member.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right space-x-3">
+                      <button onClick={() => openEditModal(member)} className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm" title="Edit">
+                        <i className="fas fa-edit"></i>
+                      </button>
+                      <button onClick={() => handleDeleteMember(member.id)} className="text-red-500 hover:text-red-700 font-medium text-sm" title="Delete">
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add/Edit Member Modal */}
+      {(isAddModalOpen || isEditModalOpen) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b flex justify-between items-center bg-[#0b3b2f] text-white">
+              <h3 className="font-bold text-lg">{editingMemberId ? 'Edit Member' : 'Add New Member'}</h3>
+              <button onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }} className="text-white/70 hover:text-white">
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{error}</div>}
+              
+              <form onSubmit={handleSaveMember} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Member ID (Optional)</Label>
+                  <Input value={memberCode} onChange={(e) => setMemberCode(e.target.value)} placeholder="Leave blank to auto-generate (e.g. EUS/022026/C/045)" />
+                  <p className="text-xs text-gray-500">If you leave this blank, the system will automatically generate it based on the Join Date.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Join Date</Label>
+                  <Input type="date" value={joinDate} onChange={(e) => setJoinDate(e.target.value)} required />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Full Name</Label>
+                  <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="e.g. Rahul Sharma" />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Mobile Number (Optional)</Label>
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} pattern="[0-9]{10}" placeholder="10 digit number" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={category} 
+                    onChange={(e) => setCategory(e.target.value)}
+                  >
+                    <option value="C">Category C (Public - ₹100/mo)</option>
+                    <option value="B">Category B (Investor - One time)</option>
+                    <option value="A">Category A (Founder - ₹1000/mo)</option>
+                  </select>
+                </div>
+
+                {(category === 'A' || category === 'B') && (
+                  <div className="space-y-2">
+                    <Label>Initial Investment (₹)</Label>
+                    <Input type="number" value={initialInvestment} onChange={(e) => setInitialInvestment(e.target.value)} required min="0" placeholder="e.g. 10000" />
+                  </div>
+                )}
+
+                {category === 'C' && (
+                  <div className="space-y-2">
+                    <Label>Term Duration</Label>
+                    <select 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={term} 
+                      onChange={(e) => setTerm(e.target.value)}
+                    >
+                      <option value="24">24 Months (16% ROI)</option>
+                      <option value="36">36 Months (27% ROI)</option>
+                    </select>
+                  </div>
+                )}
+
+                {category === 'A' && (
+                  <div className="space-y-2">
+                    <Label>Term Duration</Label>
+                    <select 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={term} 
+                      onChange={(e) => setTerm(e.target.value)}
+                    >
+                      <option value="36">36 Months</option>
+                      <option value="0">No Fixed Term</option>
+                    </select>
+                  </div>
+                )}
+
+                {editingMemberId && (
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <select 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={status} 
+                      onChange={(e) => setStatus(e.target.value)}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="matured">Matured</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="pt-4">
+                  <Button type="submit" className="w-full" disabled={formLoading}>
+                    {formLoading ? 'Saving...' : (editingMemberId ? 'Update Member' : 'Create Member')}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
