@@ -80,59 +80,91 @@ export function AdminHome() {
   if (loading) return <div className="p-6">Loading dashboard...</div>;
 
   return (
-    <div className="p-6 space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-2xl font-medium text-gray-800 tracking-tight">Dashboard Overview</h2>
+        <button className="bg-[#1e5a48] hover:bg-[#154234] text-white px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 text-sm font-medium active:scale-[0.98]">
+          <i className="fas fa-download"></i> Export Report
+        </button>
+      </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-[#1e5a48]">
-          <p className="text-sm text-gray-500 font-medium mb-1">Total Treasury</p>
-          <p className="text-2xl font-bold text-gray-800">{formatCurrency(stats.totalTreasury)}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-vault text-6xl text-[#1e5a48]"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Treasury</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.totalTreasury)}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-blue-500">
-          <p className="text-sm text-gray-500 font-medium mb-1">Active Loans</p>
-          <p className="text-2xl font-bold text-gray-800">{formatCurrency(stats.activeLoans)}</p>
+        
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-hand-holding-usd text-6xl text-blue-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Active Loans</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.activeLoans)}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-purple-500">
-          <p className="text-sm text-gray-500 font-medium mb-1">Total Members</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.totalMembers}</p>
+        
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-users text-6xl text-purple-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Members</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.totalMembers}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-green-500">
-          <p className="text-sm text-gray-500 font-medium mb-1">Current Month Collection</p>
-          <p className="text-2xl font-bold text-gray-800">{formatCurrency(stats.currentMonthCollection)}</p>
+        
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-calendar-check text-6xl text-green-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Current Month Collection</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.currentMonthCollection)}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-orange-500">
-          <p className="text-sm text-gray-500 font-medium mb-1">Total Penalty Collected</p>
-          <p className="text-2xl font-bold text-gray-800">{formatCurrency(stats.totalPenaltyCollected)}</p>
+        
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-exclamation-circle text-6xl text-orange-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Penalty Collected</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.totalPenaltyCollected)}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-teal-500">
-          <p className="text-sm text-gray-500 font-medium mb-1">Total Interest Earned</p>
-          <p className="text-2xl font-bold text-gray-800">{formatCurrency(stats.totalInterestEarned)}</p>
+        
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-chart-line text-6xl text-teal-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Interest Earned</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.totalInterestEarned)}</p>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 border-l-4 border-l-red-500">
-          <p className="text-sm text-gray-500 font-medium mb-1">Matured Members</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.maturedMembersCount}</p>
+        
+        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <i className="fas fa-award text-6xl text-red-500"></i>
+          </div>
+          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Matured Members</p>
+          <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.maturedMembersCount}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mt-8">
         {/* Recent Activity */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-            <h3 className="font-bold text-gray-800">Recent Transactions</h3>
-            <button className="text-sm text-[#1e5a48] font-medium hover:underline">View All</button>
+        <div className="bg-white rounded-3xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-50 overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-gray-800">Recent Transactions</h3>
+            <button className="text-sm text-[#1e5a48] font-medium hover:bg-[#1e5a48]/10 px-3 py-1.5 rounded-full transition-colors">View All</button>
           </div>
-          <div className="p-0">
+          <div className="p-0 flex-1">
             <table className="w-full text-left text-sm">
               <tbody>
                 {recentTx.length === 0 ? (
-                  <tr><td className="p-4 text-gray-500 text-center">No recent transactions.</td></tr>
+                  <tr><td className="p-6 text-gray-500 text-center">No recent transactions.</td></tr>
                 ) : (
                   recentTx.map((tx, idx) => (
-                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="p-4">{tx.members?.member_code}</td>
+                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
+                      <td className="p-4 pl-6 font-medium text-gray-700">{tx.members?.member_code}</td>
                       <td className="p-4 text-gray-500">{format(new Date(tx.created_at), 'dd MMM yyyy')}</td>
-                      <td className="p-4 font-bold text-right text-green-600">+{formatCurrency(Number(tx.amount) + Number(tx.penalty))}</td>
+                      <td className="p-4 pr-6 font-bold text-right text-green-600">+{formatCurrency(Number(tx.amount) + Number(tx.penalty))}</td>
                     </tr>
                   ))
                 )}
@@ -142,31 +174,31 @@ export function AdminHome() {
         </div>
 
         {/* Maturity Alerts */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-red-50">
-            <h3 className="font-bold text-red-800 flex items-center gap-2">
-              <i className="fas fa-bell"></i> Maturity Alerts
+        <div className="bg-white rounded-3xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-50 overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-red-800 flex items-center gap-2">
+              <i className="fas fa-bell text-red-500"></i> Maturity Alerts
             </h3>
-            <button className="text-sm text-red-700 font-medium hover:underline">View Report</button>
+            <button className="text-sm text-red-700 font-medium hover:bg-red-50 px-3 py-1.5 rounded-full transition-colors">View Report</button>
           </div>
-          <div className="p-4 space-y-3">
-            <div className="bg-white border border-red-100 p-3 rounded-xl flex justify-between items-center shadow-sm">
+          <div className="p-6 space-y-4 flex-1 bg-red-50/30">
+            <div className="bg-white border border-red-100 p-4 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
               <div>
-                <p className="font-bold text-gray-800 text-sm">EUS/012024/C/012</p>
-                <p className="text-xs text-gray-500">Matured on 10 Mar 2024</p>
+                <p className="font-bold text-gray-800">EUS/012024/C/012</p>
+                <p className="text-sm text-red-500 font-medium mt-0.5">Matured on 10 Mar 2024</p>
               </div>
               <div className="text-right">
-                <p className="font-bold text-[#f7b05e]">{formatCurrency(3048)}</p>
-                <button className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded mt-1 hover:bg-green-200 transition-colors">Process Payout</button>
+                <p className="font-bold text-xl text-gray-800">{formatCurrency(3048)}</p>
+                <button className="text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded-full mt-2 hover:bg-green-200 transition-colors font-medium active:scale-95">Process Payout</button>
               </div>
             </div>
-            <div className="bg-white border border-orange-100 p-3 rounded-xl flex justify-between items-center shadow-sm">
+            <div className="bg-white border border-orange-100 p-4 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
               <div>
-                <p className="font-bold text-gray-800 text-sm">EUS/022024/B/003</p>
-                <p className="text-xs text-gray-500">Maturing in 15 days</p>
+                <p className="font-bold text-gray-800">EUS/022024/B/003</p>
+                <p className="text-sm text-orange-500 font-medium mt-0.5">Maturing in 15 days</p>
               </div>
               <div className="text-right">
-                <p className="font-bold text-[#f7b05e]">{formatCurrency(13600)}</p>
+                <p className="font-bold text-xl text-gray-800">{formatCurrency(13600)}</p>
               </div>
             </div>
           </div>

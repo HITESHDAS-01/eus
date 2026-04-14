@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/src/lib/AuthContext';
-import { Button, Input, Label } from './ui/basic';
+import { motion, AnimatePresence } from 'motion/react';
 
 export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<'member' | 'admin'>('member');
@@ -10,24 +10,31 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
 
   // Member Form State
   const [memberCode, setMemberCode] = useState('');
-  const [memberPhone, setMemberPhone] = useState('');
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [num1, setNum1] = useState(0);
   const [num2, setNum2] = useState(0);
 
   // Admin Form State
-  const [adminPhone, setAdminPhone] = useState('');
-  const [adminOtp, setAdminOtp] = useState('');
-  const [showOtp, setShowOtp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const generateCaptcha = () => {
+    setNum1(Math.floor(Math.random() * 10) + 1);
+    setNum2(Math.floor(Math.random() * 10) + 1);
+    setCaptchaAnswer('');
+  };
+
   useEffect(() => {
     if (isOpen) {
-      setNum1(Math.floor(Math.random() * 10) + 1);
-      setNum2(Math.floor(Math.random() * 10) + 1);
+      generateCaptcha();
       setError('');
+      setMemberCode('');
+      setEmail('');
+      setPassword('');
+      setActiveTab('member');
     }
   }, [isOpen]);
 
@@ -37,149 +44,187 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     e.preventDefault();
     setError('');
     if (parseInt(captchaAnswer) !== num1 + num2) {
-      setError('Incorrect CAPTCHA answer.');
+      setError('Incorrect Math Captcha answer.');
+      generateCaptcha();
+      return;
+    }
+    if (!memberCode.trim()) {
+      setError('Please enter your Member ID.');
       return;
     }
     setLoading(true);
-    const success = await loginMember(memberCode, memberPhone);
+    const success = await loginMember(memberCode);
     setLoading(false);
     if (success) {
       onClose();
       navigate('/member/dashboard');
     } else {
-      setError('Invalid Member ID or Phone Number.');
+      setError('Invalid Member ID.');
+      generateCaptcha();
     }
   };
 
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const allowedPhones = ['8638074383', '7002295480', '7002241938'];
-    if (!allowedPhones.includes(adminPhone)) {
-      setError('Unauthorized admin phone number.');
-      return;
-    }
-
-    if (!showOtp) {
-      // In a real app, trigger OTP send here
-      setShowOtp(true);
+    if (!email || !password) {
+      setError('Please enter both email and password.');
       return;
     }
 
     setLoading(true);
-    const success = await loginAdmin(adminPhone, adminOtp);
+    const success = await loginAdmin(email, password);
     setLoading(false);
     if (success) {
       onClose();
       navigate('/admin/dashboard');
     } else {
-      setError('Invalid OTP.');
+      setError('Invalid email or password.');
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="bg-gray-50 py-6 flex flex-col items-center justify-center border-b border-gray-100">
-          <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-16 h-16 object-contain mb-2" referrerPolicy="no-referrer" />
-          <h2 className="text-xl font-bold text-gray-800">একতা উন্নয়ন সংস্থা</h2>
-        </div>
-        <div className="flex border-b">
-          <button
-            className={`flex-1 py-4 text-center font-semibold ${activeTab === 'member' ? 'bg-[#1e5a48] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            onClick={() => { setActiveTab('member'); setError(''); }}
-          >
-            Member Login
-          </button>
-          <button
-            className={`flex-1 py-4 text-center font-semibold ${activeTab === 'admin' ? 'bg-[#1e5a48] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            onClick={() => { setActiveTab('admin'); setError(''); }}
-          >
-            Admin Login
-          </button>
-        </div>
+    <AnimatePresence>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ duration: 0.2 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-[450px] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="bg-[#1e5a48] p-6 text-center relative border-b border-[#1a4d3c]">
+            <button 
+              onClick={onClose}
+              className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
+            >
+              <i className="fas fa-times text-xl"></i>
+            </button>
+            <h2 className="text-2xl font-bold text-white mb-1">একতা উন্নয়ন সংস্থা</h2>
+            <p className="text-[#f7b05e] font-medium">Login to your account</p>
+          </div>
 
-        <div className="p-6">
-          {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">{error}</div>}
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 bg-[#1e5a48]">
+            <button
+              className={`flex-1 py-4 text-center font-bold transition-colors ${
+                activeTab === 'member' 
+                  ? 'text-[#f7b05e] border-b-2 border-[#f7b05e] bg-[#1a4d3c]' 
+                  : 'text-white/70 hover:text-white hover:bg-[#1a4d3c]/50'
+              }`}
+              onClick={() => { setActiveTab('member'); setError(''); }}
+            >
+              Member Login
+            </button>
+            <button
+              className={`flex-1 py-4 text-center font-bold transition-colors ${
+                activeTab === 'admin' 
+                  ? 'text-[#f7b05e] border-b-2 border-[#f7b05e] bg-[#1a4d3c]' 
+                  : 'text-white/70 hover:text-white hover:bg-[#1a4d3c]/50'
+              }`}
+              onClick={() => { setActiveTab('admin'); setError(''); }}
+            >
+              Admin Login
+            </button>
+          </div>
 
-          {activeTab === 'member' ? (
-            <form onSubmit={handleMemberSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="memberCode">Member ID</Label>
-                <Input
-                  id="memberCode"
-                  placeholder="e.g. EUS/012024/C/001"
-                  value={memberCode}
-                  onChange={(e) => setMemberCode(e.target.value)}
-                  required
-                />
+          {/* Body */}
+          <div className="p-6 bg-gradient-to-b from-[#0b3b2f] to-[#1a5f4a]">
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 text-red-200 rounded-lg text-sm text-center">
+                {error}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="memberPhone">Mobile Number</Label>
-                <Input
-                  id="memberPhone"
-                  type="tel"
-                  pattern="[0-9]{10}"
-                  placeholder="10 digit mobile number"
-                  value={memberPhone}
-                  onChange={(e) => setMemberPhone(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="captcha">What is {num1} + {num2}?</Label>
-                <Input
-                  id="captcha"
-                  type="number"
-                  value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Logging in...' : 'Login as Member'}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleAdminSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="adminPhone">Admin Mobile Number</Label>
-                <Input
-                  id="adminPhone"
-                  type="tel"
-                  pattern="[0-9]{10}"
-                  placeholder="10 digit mobile number"
-                  value={adminPhone}
-                  onChange={(e) => setAdminPhone(e.target.value)}
-                  disabled={showOtp}
-                  required
-                />
-              </div>
-              {showOtp && (
-                <div className="space-y-2">
-                  <Label htmlFor="adminOtp">Enter OTP (Use 123456 for demo)</Label>
-                  <Input
-                    id="adminOtp"
+            )}
+
+            {activeTab === 'member' ? (
+              <form onSubmit={handleMemberSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1">Member ID</label>
+                  <input
                     type="text"
-                    value={adminOtp}
-                    onChange={(e) => setAdminOtp(e.target.value)}
+                    value={memberCode}
+                    onChange={(e) => setMemberCode(e.target.value)}
+                    placeholder="EUS/032026/C/001"
+                    className="w-full px-4 py-3 rounded-lg border border-gray-600 bg-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#f7b05e] focus:border-transparent transition-shadow"
                     required
                   />
                 </div>
-              )}
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Processing...' : showOtp ? 'Verify OTP & Login' : 'Send OTP'}
-              </Button>
-            </form>
-          )}
+                
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1">Math Captcha</label>
+                  <div className="flex gap-3">
+                    <div className="bg-white/10 px-4 py-3 rounded-lg border border-gray-600 font-mono text-lg font-bold text-white flex items-center justify-center min-w-[100px]">
+                      {num1} + {num2}
+                    </div>
+                    <input
+                      type="number"
+                      value={captchaAnswer}
+                      onChange={(e) => setCaptchaAnswer(e.target.value)}
+                      placeholder="Answer"
+                      className="flex-1 min-w-0 px-4 py-3 rounded-lg border border-gray-600 bg-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#f7b05e] focus:border-transparent transition-shadow"
+                      required
+                    />
+                  </div>
+                </div>
 
-          <div className="mt-4 text-center">
-            <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">
-              Cancel
-            </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-[#f7b05e] hover:bg-[#e09d3e] text-[#0b3b2f] font-bold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2 mt-4 shadow-lg"
+                >
+                  {loading ? (
+                    <i className="fas fa-spinner fa-spin"></i>
+                  ) : (
+                    <i className="fas fa-sign-in-alt"></i>
+                  )}
+                  Login as Member
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleAdminSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@example.com"
+                    className="w-full px-4 py-3 rounded-lg border border-gray-600 bg-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#f7b05e] focus:border-transparent transition-shadow"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-white/90 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 rounded-lg border border-gray-600 bg-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#f7b05e] focus:border-transparent transition-shadow"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-[#f7b05e] hover:bg-[#e09d3e] text-[#0b3b2f] font-bold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2 mt-4 shadow-lg"
+                >
+                  {loading ? (
+                    <i className="fas fa-spinner fa-spin"></i>
+                  ) : (
+                    <i className="fas fa-user-shield"></i>
+                  )}
+                  Login as Admin
+                </button>
+              </form>
+            )}
           </div>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </AnimatePresence>
   );
 }

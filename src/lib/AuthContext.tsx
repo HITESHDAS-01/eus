@@ -8,8 +8,8 @@ interface AuthContextType {
   role: UserRole;
   memberId: string | null;
   loading: boolean;
-  loginAdmin: (phone: string, otp: string) => Promise<boolean>;
-  loginMember: (memberCode: string, phone: string) => Promise<boolean>;
+  loginAdmin: (email: string, password: string) => Promise<boolean>;
+  loginMember: (memberCode: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -84,46 +84,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginAdmin = async (phone: string, otp: string) => {
-    if (otp === '123456') {
-      // Mock login for demo
-      const mockData = { id: 'admin-1', phone, role: 'admin' };
+  const loginAdmin = async (email: string, password: string) => {
+    // Mock login for demo
+    if (email === 'admin@eus.com' && password === 'admin123') {
+      const mockData = { id: 'admin-1', email, role: 'admin' };
       localStorage.setItem('mockSession', JSON.stringify(mockData));
-      setUser({ id: mockData.id, phone });
+      setUser({ id: mockData.id, email });
       setRole('admin');
       return true;
     }
 
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone: `+91${phone}`,
-        token: otp,
-        type: 'sms',
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
       if (error) throw error;
-      return true;
+      
+      // Check if the user is actually an admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+        
+      if (profile?.role === 'admin') {
+        setUser(data.user);
+        setRole('admin');
+        return true;
+      } else {
+        // If not admin, sign out
+        await supabase.auth.signOut();
+        return false;
+      }
     } catch (error) {
       console.error('Admin login error:', error);
       return false;
     }
   };
 
-  const loginMember = async (memberCode: string, phone: string) => {
-    // For demo, we'll use a mock login if Supabase is not configured
+  const loginMember = async (memberCode: string) => {
     try {
       const { data: member, error } = await supabase
         .from('members')
-        .select('id, profiles!inner(phone)')
+        .select('id, member_code')
         .eq('member_code', memberCode)
-        .eq('profiles.phone', phone)
         .single();
 
       if (member) {
-        // Real login logic would go here, but for now we mock the session
-        // since we don't have a password for members
-        const mockData = { id: member.id, phone, role: 'member', memberId: member.id };
+        const mockData = { id: member.id, memberCode, role: 'member', memberId: member.id };
         localStorage.setItem('mockSession', JSON.stringify(mockData));
-        setUser({ id: mockData.id, phone });
+        setUser({ id: mockData.id, memberCode });
         setRole('member');
         setMemberId(member.id);
         return true;
@@ -134,9 +145,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Fallback mock login for demo if no DB connection
     if (memberCode.startsWith('EUS/')) {
-      const mockData = { id: 'member-1', phone, role: 'member', memberId: 'member-1' };
+      const mockData = { id: 'member-1', memberCode, role: 'member', memberId: 'member-1' };
       localStorage.setItem('mockSession', JSON.stringify(mockData));
-      setUser({ id: mockData.id, phone });
+      setUser({ id: mockData.id, memberCode });
       setRole('member');
       setMemberId('member-1');
       return true;

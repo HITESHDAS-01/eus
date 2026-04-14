@@ -10,6 +10,8 @@ export function Members() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -66,21 +68,27 @@ export function Members() {
     setIsEditModalOpen(true);
   };
 
-  const handleDeleteMember = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this member? This action cannot be undone.')) return;
+  const confirmDelete = (id: string) => {
+    setDeleteError('');
+    setMemberToDelete(id);
+  };
+
+  const handleDeleteMember = async () => {
+    if (!memberToDelete) return;
     
     try {
       // Delete from members first (due to foreign key constraints if any, though profiles is the parent)
-      const { error: memberError } = await supabase.from('members').delete().eq('id', id);
+      const { error: memberError } = await supabase.from('members').delete().eq('id', memberToDelete);
       if (memberError) throw memberError;
 
-      const { error: profileError } = await supabase.from('profiles').delete().eq('id', id);
+      const { error: profileError } = await supabase.from('profiles').delete().eq('id', memberToDelete);
       if (profileError) throw profileError;
 
+      setMemberToDelete(null);
       fetchMembers();
     } catch (err: any) {
       console.error(err);
-      alert('Failed to delete member: ' + err.message);
+      setDeleteError('Failed to delete member: ' + err.message);
     }
   };
 
@@ -215,7 +223,7 @@ export function Members() {
                       <button onClick={() => openEditModal(member)} className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm" title="Edit">
                         <i className="fas fa-edit"></i>
                       </button>
-                      <button onClick={() => handleDeleteMember(member.id)} className="text-red-500 hover:text-red-700 font-medium text-sm" title="Delete">
+                      <button onClick={() => confirmDelete(member.id)} className="text-red-500 hover:text-red-700 font-medium text-sm" title="Delete">
                         <i className="fas fa-trash"></i>
                       </button>
                     </td>
@@ -332,6 +340,35 @@ export function Members() {
                   </Button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {memberToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-red-50 text-red-800 flex items-center gap-3">
+              <i className="fas fa-exclamation-triangle text-xl"></i>
+              <h3 className="font-bold text-lg">Confirm Deletion</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">Are you sure you want to delete this member? This action cannot be undone and will remove all associated data.</p>
+              
+              {deleteError && (
+                <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="outline" onClick={() => setMemberToDelete(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleDeleteMember} className="bg-red-600 hover:bg-red-700 text-white">
+                  Delete Member
+                </Button>
+              </div>
             </div>
           </div>
         </div>

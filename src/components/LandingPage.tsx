@@ -262,7 +262,7 @@ export function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
               <button onClick={() => scrollTo('rules')} className="text-left text-lg font-medium text-white hover:text-[#f7b05e]">{t.nav.rules}</button>
               <button onClick={() => scrollTo('contact')} className="text-left text-lg font-medium text-white hover:text-[#f7b05e]">{t.nav.contact}</button>
               <button onClick={() => { setIsMobileMenuOpen(false); onLoginClick(); }} className="text-center text-lg font-bold py-3 rounded-full bg-[#f7b05e] text-[#0b3b2f] mt-2">
-                Member Login
+                Login
               </button>
             </div>
           </div>
