@@ -93,11 +93,7 @@ export function AdminDashboard() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center text-white transition-colors relative">
-              <i className="fas fa-bell"></i>
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#0b3b2f]"></span>
-            </button>
-            <div className="flex items-center gap-3 pl-4 border-l border-white/20">
+            <div className="flex items-center gap-3">
               <div className="hidden md:block text-right">
                 <p className="text-sm font-bold text-white">Admin User</p>
                 <p className="text-xs text-gray-300">Administrator</p>

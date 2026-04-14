@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
 import { formatCurrency } from '../../lib/utils';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 export function Members() {
   const [members, setMembers] = useState<any[]>([]);
@@ -12,6 +13,8 @@ export function Members() {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [importMessage, setImportMessage] = useState({ type: '', text: '' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -21,6 +24,7 @@ export function Members() {
   const [category, setCategory] = useState('C');
   const [initialInvestment, setInitialInvestment] = useState('');
   const [term, setTerm] = useState('24');
+  const [monthlyInstallment, setMonthlyInstallment] = useState('100');
   const [status, setStatus] = useState('active');
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +54,7 @@ export function Members() {
   };
 
   const openAddModal = () => {
-    setFullName(''); setPhone(''); setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd')); setCategory('C'); setInitialInvestment(''); setTerm('24'); setStatus('active');
+    setFullName(''); setPhone(''); setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd')); setCategory('C'); setInitialInvestment(''); setTerm('24'); setMonthlyInstallment('100'); setStatus('active');
     setEditingMemberId(null);
     setIsAddModalOpen(true);
   };
@@ -63,6 +67,7 @@ export function Members() {
     setCategory(member.category || 'C');
     setInitialInvestment(member.initial_investment?.toString() || '');
     setTerm(member.chosen_term_months?.toString() || '24');
+    setMonthlyInstallment(member.monthly_installment?.toString() || '100');
     setStatus(member.status || 'active');
     setEditingMemberId(member.id);
     setIsEditModalOpen(true);
@@ -119,7 +124,7 @@ export function Members() {
             status: status,
             initial_investment: category === 'C' ? 0 : Number(initialInvestment),
             chosen_term_months: category === 'B' ? 36 : Number(term),
-            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? 100 : null)
+            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null)
           })
           .eq('id', editingMemberId);
 
@@ -149,7 +154,7 @@ export function Members() {
             category: category,
             initial_investment: category === 'C' ? 0 : Number(initialInvestment),
             chosen_term_months: category === 'B' ? 36 : Number(term),
-            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? 100 : null)
+            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null)
           });
 
         if (memberError) throw memberError;
@@ -165,14 +170,115 @@ export function Members() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setImportMessage({ type: '', text: '' });
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        if (data.length === 0) {
+          throw new Error("The uploaded file is empty.");
+        }
+
+        const profilesToInsert = [];
+        const membersToInsert = [];
+
+        for (const row of data as any[]) {
+          const memberCode = row['MEMBER ID'] || row['Member ID'] || row['ID'] || '';
+          const name = row['NAME'] || row['Name'] || row['Full Name'] || 'Unknown';
+          const installment = Number(row['INSTALMENT'] || row['INSTALLMENT'] || row['Installment'] || 100);
+          const phone = row['PHONE'] || row['Phone'] || null;
+          const category = row['CATEGORY'] || row['Category'] || 'C';
+          let joinDate = row['JOIN DATE'] || row['Join Date'];
+
+          // Basic date formatting fallback
+          if (!joinDate) {
+            joinDate = format(new Date(), 'yyyy-MM-dd');
+          } else if (typeof joinDate === 'number') {
+            // Excel serial date conversion
+            const excelEpoch = new Date(1899, 11, 30);
+            const dateObj = new Date(excelEpoch.getTime() + joinDate * 86400000);
+            joinDate = format(dateObj, 'yyyy-MM-dd');
+          }
+
+          const newId = crypto.randomUUID();
+          profilesToInsert.push({
+            id: newId,
+            full_name: name,
+            phone: phone ? String(phone) : null,
+            role: 'member'
+          });
+          membersToInsert.push({
+            id: newId,
+            member_code: memberCode,
+            join_date: joinDate,
+            category: category,
+            initial_investment: category === 'C' ? 0 : 0,
+            chosen_term_months: 24,
+            monthly_installment: installment
+          });
+        }
+
+        const { error: profileError } = await supabase.from('profiles').insert(profilesToInsert);
+        if (profileError) throw profileError;
+
+        const { error: memberError } = await supabase.from('members').insert(membersToInsert);
+        if (memberError) throw memberError;
+
+        await fetchMembers();
+        setImportMessage({ type: 'success', text: `Successfully imported ${data.length} members!` });
+      } catch (err: any) {
+        console.error(err);
+        setImportMessage({ type: 'error', text: 'Error importing: ' + err.message });
+      } finally {
+        setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Members Directory</h2>
-        <Button onClick={openAddModal} className="gap-2">
-          <i className="fas fa-user-plus"></i> Add New Member
-        </Button>
+        <div className="flex gap-3">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            accept=".xlsx, .xls, .csv" 
+            className="hidden" 
+          />
+          <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2 border-[#1e5a48] text-[#1e5a48] hover:bg-[#1e5a48] hover:text-white">
+            <i className="fas fa-file-excel"></i> Import Excel
+          </Button>
+          <Button onClick={openAddModal} className="gap-2">
+            <i className="fas fa-user-plus"></i> Add New Member
+          </Button>
+        </div>
       </div>
+
+      {importMessage.text && (
+        <div className={`p-4 rounded-lg border ${importMessage.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+          <div className="flex justify-between items-center">
+            <p>{importMessage.text}</p>
+            <button onClick={() => setImportMessage({ type: '', text: '' })} className="text-current opacity-70 hover:opacity-100">
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Members Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -292,16 +398,22 @@ export function Members() {
                 )}
 
                 {category === 'C' && (
-                  <div className="space-y-2">
-                    <Label>Term Duration</Label>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={term} 
-                      onChange={(e) => setTerm(e.target.value)}
-                    >
-                      <option value="24">24 Months (16% ROI)</option>
-                      <option value="36">36 Months (27% ROI)</option>
-                    </select>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Term Duration</Label>
+                      <select 
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={term} 
+                        onChange={(e) => setTerm(e.target.value)}
+                      >
+                        <option value="24">24 Months (16% ROI)</option>
+                        <option value="36">36 Months (27% ROI)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Monthly Installment (₹)</Label>
+                      <Input type="number" value={monthlyInstallment} onChange={(e) => setMonthlyInstallment(e.target.value)} required min="100" step="100" placeholder="e.g. 100, 200, 500" />
+                    </div>
                   </div>
                 )}
 

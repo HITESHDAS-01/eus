@@ -20,7 +20,8 @@ export function Loans() {
   
   // Repay Form State
   const [selectedLoanId, setSelectedLoanId] = useState('');
-  const [repayAmount, setRepayAmount] = useState('');
+  const [repayPrincipal, setRepayPrincipal] = useState('');
+  const [repayInterest, setRepayInterest] = useState('');
   const [repayDate, setRepayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   const [formLoading, setFormLoading] = useState(false);
@@ -123,22 +124,11 @@ export function Loans() {
       const loan = activeLoans.find(l => l.id === selectedLoanId);
       if (!loan) throw new Error('Select a loan');
 
-      const amountPaid = Number(repayAmount);
-      // Simplified interest calculation for demo: 
-      // Assume 1 month has passed since last payment or disbursement.
-      // In a real app, calculate exact days or months between dates.
-      const interestDue = (Number(loan.remaining_principal) * Number(loan.interest_rate)) / 100;
-      
-      let interestPortion = 0;
-      let principalPortion = 0;
+      const principalPortion = Number(repayPrincipal);
+      const interestPortion = Number(repayInterest);
+      const amountPaid = principalPortion + interestPortion;
 
-      if (amountPaid >= interestDue) {
-        interestPortion = interestDue;
-        principalPortion = amountPaid - interestDue;
-      } else {
-        interestPortion = amountPaid;
-        principalPortion = 0;
-      }
+      if (amountPaid <= 0) throw new Error('Total payment must be greater than 0');
 
       const newRemaining = Number(loan.remaining_principal) - principalPortion;
       const newStatus = newRemaining <= 0 ? 'closed' : 'active';
@@ -170,7 +160,7 @@ export function Loans() {
 
       setSuccessMsg(`Repayment successful! Principal reduced by ${formatCurrency(principalPortion)}`);
       fetchData();
-      setSelectedLoanId(''); setRepayAmount('');
+      setSelectedLoanId(''); setRepayPrincipal(''); setRepayInterest('');
     } catch (err: any) {
       setError(err.message || 'Failed to process repayment');
     } finally {
@@ -261,14 +251,20 @@ export function Loans() {
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Payment Date</Label>
                 <Input type="date" value={repayDate} onChange={(e) => setRepayDate(e.target.value)} required />
               </div>
-              <div className="space-y-2">
-                <Label>Amount Paid (₹)</Label>
-                <Input type="number" value={repayAmount} onChange={(e) => setRepayAmount(e.target.value)} required min="1" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Principal Amount (₹)</Label>
+                  <Input type="number" value={repayPrincipal} onChange={(e) => setRepayPrincipal(e.target.value)} required min="0" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Interest Amount (₹)</Label>
+                  <Input type="number" value={repayInterest} onChange={(e) => setRepayInterest(e.target.value)} required min="0" />
+                </div>
               </div>
             </div>
 

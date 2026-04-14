@@ -135,7 +135,7 @@ const content = {
     rules: {
       title: 'Disciplined Rules',
       r1Title: 'Deadline:',
-      r1: 'Final time for submitting monthly installment or loan interest is the 10th of every month.',
+      r1: 'Final time for submitting monthly installment or loan interest is the 15th of every month.',
       r2Title: 'Penalty:',
       r2: 'If submitted after the due date, a 5% penalty will be levied on the total due amount.',
       r3Title: 'Early Exit:',

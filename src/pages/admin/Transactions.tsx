@@ -18,7 +18,7 @@ export function Transactions() {
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
-  const [penaltySettings, setPenaltySettings] = useState({ percentage: 5, dueDay: 10 });
+  const [penaltySettings, setPenaltySettings] = useState({ percentage: 5, dueDay: 15 });
 
   useEffect(() => {
     fetchData();
@@ -31,7 +31,16 @@ export function Transactions() {
       const { data: settingsData } = await supabase.from('settings').select('*');
       if (settingsData) {
         const penaltyPct = settingsData.find(s => s.key === 'penalty_percentage')?.value || 5;
-        const dueDay = settingsData.find(s => s.key === 'monthly_due_day')?.value || 10;
+        let dueDay = settingsData.find(s => s.key === 'monthly_due_day')?.value;
+        
+        // Auto-migrate from 10 to 15 if it hasn't been changed manually
+        if (dueDay === 10) {
+          await supabase.from('settings').update({ value: 15 }).eq('key', 'monthly_due_day');
+          dueDay = 15;
+        } else if (!dueDay) {
+          dueDay = 15;
+        }
+
         setPenaltySettings({ percentage: Number(penaltyPct), dueDay: Number(dueDay) });
       }
 
