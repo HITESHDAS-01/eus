@@ -15,6 +15,7 @@ export function AdminHome() {
     pendingInstallments: 0,
   });
   const [recentTx, setRecentTx] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<{ overdue: any[], maturing: any[] }>({ overdue: [], maturing: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,13 +59,67 @@ export function AdminHome() {
       // Calculate pending installments
       const { data: activeACMembers } = await supabase
         .from('members')
-        .select('id')
+        .select('id, member_code, profiles(full_name, phone)')
         .in('category', ['A', 'C'])
         .eq('status', 'active');
       
       const totalACMembers = activeACMembers?.length || 0;
       const paidMemberIds = new Set(currentMonthTx?.map(tx => tx.member_id));
       const pendingInstallments = Math.max(0, totalACMembers - paidMemberIds.size);
+
+      // 5. Alerts Data
+      const today = new Date();
+      const isLate = today.getDate() > 15;
+      
+      let overdue: any[] = [];
+      if (isLate && activeACMembers) {
+        overdue = activeACMembers.filter(m => !paidMemberIds.has(m.id));
+      }
+
+      // Maturity Alerts
+      const { data: allActiveMembers } = await supabase
+        .from('members')
+        .select('id, member_code, join_date, category, chosen_term_months, initial_investment, savings_installments(amount)')
+        .eq('status', 'active');
+
+      let maturing: any[] = [];
+      let maturedCount = 0;
+
+      if (allActiveMembers) {
+        const { differenceInMonths } = await import('date-fns');
+        maturing = allActiveMembers.map(m => {
+          const joinDate = m.join_date ? new Date(m.join_date) : new Date();
+          const safeJoinDate = isNaN(joinDate.getTime()) ? new Date() : joinDate;
+          const maturityDate = new Date(safeJoinDate.setMonth(safeJoinDate.getMonth() + (m.chosen_term_months || 36)));
+          const monthsRemaining = differenceInMonths(maturityDate, new Date());
+          
+          const totalInst = m.savings_installments?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) || 0;
+          let totalSav = 0;
+          if (m.category === 'A') totalSav = Number(m.initial_investment) + totalInst;
+          else if (m.category === 'B') totalSav = Number(m.initial_investment);
+          else if (m.category === 'C') totalSav = totalInst;
+
+          let roi = 0;
+          if (m.category === 'B') roi = 36;
+          else if (m.category === 'C' && m.chosen_term_months === 24) roi = 16;
+          else if (m.category === 'C' && m.chosen_term_months === 36) roi = 27;
+
+          const projectedAmount = totalSav * (1 + roi / 100);
+
+          return {
+            ...m,
+            maturityDate,
+            monthsRemaining,
+            projectedAmount
+          };
+        }).filter(m => {
+          if (m.monthsRemaining <= 0) {
+            maturedCount++;
+            return true;
+          }
+          return m.monthsRemaining <= 3;
+        }).sort((a, b) => a.monthsRemaining - b.monthsRemaining);
+      }
 
       setStats({
         totalTreasury,
@@ -73,11 +128,13 @@ export function AdminHome() {
         currentMonthCollection: currentMonthTotal,
         totalPenaltyCollected: totalPenalty,
         totalInterestEarned: totalInterest,
-        maturedMembersCount: 0, // Will be calculated in Reports
+        maturedMembersCount: maturedCount,
         pendingInstallments,
       });
 
-      // 5. Recent Transactions
+      setAlerts({ overdue, maturing });
+
+      // 6. Recent Transactions
       const { data: recent } = await supabase
         .from('savings_installments')
         .select('amount, penalty, created_at, members(member_code)')
@@ -170,14 +227,14 @@ export function AdminHome() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mt-8">
         {/* Recent Activity */}
         <div className="bg-white rounded-3xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-50 overflow-hidden flex flex-col">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
             <h3 className="text-lg font-medium text-gray-800">Recent Transactions</h3>
             <button className="text-sm text-[#1e5a48] font-medium hover:bg-[#1e5a48]/10 px-3 py-1.5 rounded-full transition-colors">View All</button>
           </div>
-          <div className="p-0 flex-1">
+          <div className="p-0 flex-1 overflow-y-auto max-h-[400px]">
             <table className="w-full text-left text-sm">
               <tbody>
                 {recentTx.length === 0 ? (
@@ -196,34 +253,64 @@ export function AdminHome() {
           </div>
         </div>
 
+        {/* Overdue Payments */}
+        <div className="bg-white rounded-3xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-50 overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-orange-800 flex items-center gap-2">
+              <i className="fas fa-exclamation-triangle text-orange-500"></i> Overdue Payments
+            </h3>
+          </div>
+          <div className="p-6 space-y-4 flex-1 bg-orange-50/30 overflow-y-auto max-h-[400px]">
+            {alerts.overdue.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <i className="fas fa-check-circle text-4xl text-green-400 mb-3"></i>
+                <p>No overdue payments this month!</p>
+              </div>
+            ) : (
+              alerts.overdue.map((m) => (
+                <div key={m.id} className="bg-white border border-orange-100 p-4 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
+                  <div>
+                    <p className="font-bold text-gray-800">{m.member_code}</p>
+                    <p className="text-sm text-gray-500 font-medium mt-0.5">{m.profiles?.full_name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-orange-600 font-bold bg-orange-100 px-2 py-1 rounded">Late</p>
+                    <p className="text-xs text-gray-400 mt-1">{m.profiles?.phone}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         {/* Maturity Alerts */}
         <div className="bg-white rounded-3xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-gray-50 overflow-hidden flex flex-col">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
             <h3 className="text-lg font-medium text-red-800 flex items-center gap-2">
               <i className="fas fa-bell text-red-500"></i> Maturity Alerts
             </h3>
-            <button className="text-sm text-red-700 font-medium hover:bg-red-50 px-3 py-1.5 rounded-full transition-colors">View Report</button>
           </div>
-          <div className="p-6 space-y-4 flex-1 bg-red-50/30">
-            <div className="bg-white border border-red-100 p-4 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
-              <div>
-                <p className="font-bold text-gray-800">EUS/012024/C/012</p>
-                <p className="text-sm text-red-500 font-medium mt-0.5">Matured on 10 Mar 2024</p>
+          <div className="p-6 space-y-4 flex-1 bg-red-50/30 overflow-y-auto max-h-[400px]">
+            {alerts.maturing.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <i className="fas fa-calendar-check text-4xl text-gray-300 mb-3"></i>
+                <p>No upcoming maturities in 3 months.</p>
               </div>
-              <div className="text-right">
-                <p className="font-bold text-xl text-gray-800">{formatCurrency(3048)}</p>
-                <button className="text-sm bg-green-100 text-green-700 px-3 py-1.5 rounded-full mt-2 hover:bg-green-200 transition-colors font-medium active:scale-95">Process Payout</button>
-              </div>
-            </div>
-            <div className="bg-white border border-orange-100 p-4 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
-              <div>
-                <p className="font-bold text-gray-800">EUS/022024/B/003</p>
-                <p className="text-sm text-orange-500 font-medium mt-0.5">Maturing in 15 days</p>
-              </div>
-              <div className="text-right">
-                <p className="font-bold text-xl text-gray-800">{formatCurrency(13600)}</p>
-              </div>
-            </div>
+            ) : (
+              alerts.maturing.map((m) => (
+                <div key={m.id} className={`bg-white border ${m.monthsRemaining <= 0 ? 'border-red-200' : 'border-orange-100'} p-4 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow`}>
+                  <div>
+                    <p className="font-bold text-gray-800">{m.member_code}</p>
+                    <p className={`text-sm font-medium mt-0.5 ${m.monthsRemaining <= 0 ? 'text-red-500' : 'text-orange-500'}`}>
+                      {m.monthsRemaining <= 0 ? `Matured on ${format(m.maturityDate, 'dd MMM yyyy')}` : `Maturing in ${m.monthsRemaining} months`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-xl text-gray-800">{formatCurrency(m.projectedAmount)}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

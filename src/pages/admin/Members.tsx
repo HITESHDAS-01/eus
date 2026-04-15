@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
 import { formatCurrency, safeFormatDate } from '../../lib/utils';
@@ -7,6 +8,7 @@ import * as XLSX from 'xlsx';
 import StatementModal from '../../components/admin/StatementModal';
 
 export function Members() {
+  const navigate = useNavigate();
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -22,7 +24,6 @@ export function Members() {
   const [categoryFilter, setCategoryFilter] = useState('All');
   
   // Profile View Modal State
-  const [viewingMember, setViewingMember] = useState<any | null>(null);
   const [statementMemberId, setStatementMemberId] = useState<string | null>(null);
 
   // Form State
@@ -369,7 +370,7 @@ export function Members() {
                 </tr>
               ) : (
                 filteredMembers.map((member) => (
-                  <tr key={member.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setViewingMember(member)}>
+                  <tr key={member.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/admin/members/${member.id}`)}>
                     <td className="p-4 font-mono font-medium text-[#1e5a48]">{member.member_code}</td>
                     <td className="p-4 font-bold text-gray-800">{member.profiles?.full_name}</td>
                     <td className="p-4">
@@ -404,93 +405,6 @@ export function Members() {
           </table>
         </div>
       </div>
-
-      {/* Full Profile View Modal */}
-      {viewingMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-5 border-b flex justify-between items-center bg-[#0b3b2f] text-white">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e]">
-                  <i className="fas fa-user text-xl"></i>
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">{viewingMember.profiles?.full_name}</h3>
-                  <p className="text-xs text-[#f7b05e]">{viewingMember.member_code}</p>
-                </div>
-              </div>
-              <button onClick={() => setViewingMember(null)} className="text-white/70 hover:text-white">
-                <i className="fas fa-times text-xl"></i>
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Personal Details</h4>
-                  <div>
-                    <p className="text-xs text-gray-500">Full Name</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.full_name}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Father/Husband Name</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.father_husband_name || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Gender</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.gender || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Date of Birth</p>
-                    <p className="font-medium text-gray-800">{safeFormatDate(viewingMember.profiles?.dob)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Aadhaar / VID No.</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.aadhaar_vid_no || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Nominee Name</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.nominee_name || 'N/A'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Contact & Account</h4>
-                  <div>
-                    <p className="text-xs text-gray-500">Phone Number</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Address</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.address || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Category</p>
-                    <p className="font-medium text-gray-800">Category {viewingMember.category}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Join Date</p>
-                    <p className="font-medium text-gray-800">{safeFormatDate(viewingMember.join_date)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Monthly Installment</p>
-                    <p className="font-medium text-gray-800">{formatCurrency(viewingMember.monthly_installment || 0)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Status</p>
-                    <span className="bg-green-50 text-green-600 px-2 py-1 rounded text-xs font-medium border border-green-200 mt-1 inline-block">
-                      {viewingMember.status.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="p-4 border-t bg-gray-50 flex justify-end">
-              <Button onClick={() => setViewingMember(null)} variant="outline">Close</Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add/Edit Member Modal */}
       {(isAddModalOpen || isEditModalOpen) && (

@@ -5,7 +5,7 @@ import { format, differenceInMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { Input, Label } from '../../components/ui/basic';
 
 export function Reports() {
-  const [activeTab, setActiveTab] = useState<'maturity' | 'collection' | 'defaulter' | 'interest'>('maturity');
+  const [activeTab, setActiveTab] = useState<'maturity' | 'collection' | 'defaulter' | 'interest' | 'monthly_sheet'>('maturity');
   const [members, setMembers] = useState<any[]>([]);
   const [reportData, setReportData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +24,8 @@ export function Reports() {
       fetchDefaulterData();
     } else if (activeTab === 'interest') {
       fetchInterestData();
+    } else if (activeTab === 'monthly_sheet') {
+      fetchMonthlySheetData();
     }
   }, [activeTab, startDate, endDate]);
 
@@ -149,6 +151,62 @@ export function Reports() {
     }
   };
 
+  const fetchMonthlySheetData = async () => {
+    setLoading(true);
+    try {
+      // Get all active members
+      const { data: activeMembers } = await supabase
+        .from('members')
+        .select('id, member_code, category, profiles(full_name)')
+        .eq('status', 'active')
+        .order('member_code', { ascending: true });
+
+      // Get installments in the current month
+      const currentMonthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+      const currentMonthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+      
+      const { data: installments } = await supabase
+        .from('savings_installments')
+        .select('member_id, amount, payment_date')
+        .gte('payment_date', currentMonthStart)
+        .lte('payment_date', currentMonthEnd);
+
+      if (activeMembers && installments) {
+        const paidMembers = new Map();
+        installments.forEach(tx => {
+          paidMembers.set(tx.member_id, tx);
+        });
+
+        const today = new Date();
+        const isLate = today.getDate() > 15;
+
+        const sheetData = activeMembers.map(m => {
+          if (m.category === 'B') {
+            return { ...m, status: 'N/A', statusIcon: '➖', amount: '-' };
+          }
+
+          const payment = paidMembers.get(m.id);
+          if (payment) {
+            return { ...m, status: 'Paid', statusIcon: '✅', amount: payment.amount, date: payment.payment_date };
+          } else {
+            return { 
+              ...m, 
+              status: isLate ? 'Late' : 'Pending', 
+              statusIcon: isLate ? '❌' : '⏳',
+              amount: '-'
+            };
+          }
+        });
+
+        setReportData(sheetData);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredMembers = members.filter(m => {
     if (filter === 'all') return true;
     if (filter === 'matured') return m.maturityStatus === 'Matured';
@@ -185,9 +243,15 @@ export function Reports() {
         >
           Interest Earned
         </button>
+        <button
+          className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeTab === 'monthly_sheet' ? 'border-b-2 border-[#1e5a48] text-[#1e5a48]' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('monthly_sheet')}
+        >
+          Monthly Sheet
+        </button>
       </div>
 
-      {activeTab !== 'maturity' && (
+      {activeTab !== 'maturity' && activeTab !== 'monthly_sheet' && (
         <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex-1">
             <Label className="text-xs text-gray-500 mb-1 block">Start Date</Label>
@@ -254,6 +318,16 @@ export function Reports() {
                   <th className="p-4 font-medium">Member</th>
                   <th className="p-4 font-medium text-right">Principal Paid</th>
                   <th className="p-4 font-medium text-right">Interest Earned</th>
+                </tr>
+              )}
+              {activeTab === 'monthly_sheet' && (
+                <tr>
+                  <th className="p-4 font-medium">Member ID</th>
+                  <th className="p-4 font-medium">Name</th>
+                  <th className="p-4 font-medium">Category</th>
+                  <th className="p-4 font-medium text-center">Status</th>
+                  <th className="p-4 font-medium text-right">Amount Paid</th>
+                  <th className="p-4 font-medium text-right">Payment Date</th>
                 </tr>
               )}
             </thead>
@@ -333,6 +407,30 @@ export function Reports() {
                       </td>
                       <td className="p-4 text-right">{formatCurrency(tx.principal_portion)}</td>
                       <td className="p-4 text-right font-bold text-teal-600">+{formatCurrency(tx.interest_portion)}</td>
+                    </tr>
+                  ))
+                )
+              ) : activeTab === 'monthly_sheet' ? (
+                reportData.length === 0 ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-500">No active members found.</td></tr>
+                ) : (
+                  reportData.map((m) => (
+                    <tr key={m.id} className="hover:bg-gray-50">
+                      <td className="p-4 font-mono text-[#1e5a48]">{m.member_code}</td>
+                      <td className="p-4 font-bold text-gray-800">{m.profiles?.full_name}</td>
+                      <td className="p-4">Cat {m.category}</td>
+                      <td className="p-4 text-center">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center justify-center gap-1 w-max mx-auto ${
+                          m.status === 'Paid' ? 'bg-green-100 text-green-700' :
+                          m.status === 'Late' ? 'bg-red-100 text-red-700' :
+                          m.status === 'Pending' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {m.statusIcon} {m.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right font-medium">{m.amount !== '-' ? formatCurrency(m.amount) : '-'}</td>
+                      <td className="p-4 text-right text-gray-500">{m.date ? safeFormatDate(m.date) : '-'}</td>
                     </tr>
                   ))
                 )

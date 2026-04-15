@@ -7,6 +7,7 @@ import { Transactions } from './admin/Transactions';
 import { Loans } from './admin/Loans';
 import { Settings } from './admin/Settings';
 import { Reports } from './admin/Reports';
+import { MemberProfile } from './admin/MemberProfile';
 
 export function AdminDashboard() {
   const { logout } = useAuth();
@@ -110,6 +111,7 @@ export function AdminDashboard() {
           <div className="max-w-7xl mx-auto">
             <Routes>
               <Route path="/" element={<AdminHome />} />
+              <Route path="/members/:id" element={<MemberProfile />} />
               <Route path="/members/*" element={<Members />} />
               <Route path="/transactions/*" element={<Transactions />} />
               <Route path="/loans/*" element={<Loans />} />
