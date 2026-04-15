@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format } from 'date-fns';
 import { useAuth } from '../../lib/AuthContext';
 
@@ -115,16 +115,21 @@ export function Loans() {
       if (!member) throw new Error('Select a member');
       if (Number(disburseAmount) > eligibility) throw new Error('Amount exceeds 80% eligibility limit');
 
+      const insertData: any = {
+        member_id: selectedMemberId,
+        principal_amount: Number(disburseAmount),
+        interest_rate: Number(interestRate),
+        disbursed_date: disburseDate,
+        remaining_principal: Number(disburseAmount),
+      };
+
+      if (user?.id && user.id.length > 20) {
+        insertData.approved_by = user.id;
+      }
+
       const { error: insertError } = await supabase
         .from('loans')
-        .insert({
-          member_id: selectedMemberId,
-          principal_amount: Number(disburseAmount),
-          interest_rate: Number(interestRate),
-          disbursed_date: disburseDate,
-          remaining_principal: Number(disburseAmount),
-          approved_by: user?.id
-        });
+        .insert(insertData);
 
       if (insertError) throw insertError;
 
@@ -157,17 +162,22 @@ export function Loans() {
       const receiptNumber = `LREP-${format(new Date(), 'yyyyMMddHHmmss')}`;
 
       // 1. Insert Repayment
+      const repInsertData: any = {
+        loan_id: selectedLoanId,
+        amount_paid: amountPaid,
+        principal_portion: principalPortion,
+        interest_portion: interestPortion,
+        payment_date: repayDate,
+        receipt_number: receiptNumber,
+      };
+
+      if (user?.id && user.id.length > 20) {
+        repInsertData.created_by = user.id;
+      }
+
       const { error: repError } = await supabase
         .from('loan_repayments')
-        .insert({
-          loan_id: selectedLoanId,
-          amount_paid: amountPaid,
-          principal_portion: principalPortion,
-          interest_portion: interestPortion,
-          payment_date: repayDate,
-          receipt_number: receiptNumber,
-          created_by: user?.id
-        });
+        .insert(repInsertData);
       if (repError) throw repError;
 
       // 2. Update Loan
@@ -347,7 +357,7 @@ export function Loans() {
                       <div className="font-bold text-gray-800">{loan.members?.profiles?.full_name}</div>
                       <div className="text-xs text-gray-500">{loan.members?.member_code}</div>
                     </td>
-                    <td className="p-4 text-gray-600">{format(new Date(loan.disbursed_date), 'dd MMM yyyy')}</td>
+                    <td className="p-4 text-gray-600">{safeFormatDate(loan.disbursed_date)}</td>
                     <td className="p-4 text-right font-medium">{formatCurrency(loan.principal_amount)}</td>
                     <td className="p-4 text-right text-gray-600">{loan.interest_rate}% / mo</td>
                     <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(loan.remaining_principal)}</td>

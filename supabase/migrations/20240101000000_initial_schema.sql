@@ -29,7 +29,7 @@ CREATE TABLE members (
 -- Create savings_installments table
 CREATE TABLE savings_installments (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    member_id UUID REFERENCES members(id) NOT NULL,
+    member_id UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
     amount NUMERIC NOT NULL,
     penalty NUMERIC DEFAULT 0,
     payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -43,7 +43,7 @@ CREATE TABLE savings_installments (
 -- Create loans table
 CREATE TABLE loans (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    member_id UUID REFERENCES members(id) NOT NULL,
+    member_id UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
     principal_amount NUMERIC NOT NULL,
     interest_rate NUMERIC NOT NULL,
     disbursed_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -55,7 +55,7 @@ CREATE TABLE loans (
 -- Create loan_repayments table
 CREATE TABLE loan_repayments (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    loan_id UUID REFERENCES loans(id) NOT NULL,
+    loan_id UUID REFERENCES loans(id) ON DELETE CASCADE NOT NULL,
     amount_paid NUMERIC NOT NULL,
     principal_portion NUMERIC NOT NULL,
     interest_portion NUMERIC NOT NULL,

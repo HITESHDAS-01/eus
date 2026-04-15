@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format, getDate, startOfMonth, setDate } from 'date-fns';
 import { useAuth } from '../../lib/AuthContext';
 
@@ -78,32 +78,47 @@ export function Transactions() {
     try {
       const member = members.find(m => m.id === selectedMemberId);
       if (!member) throw new Error('Please select a member');
+      if (!paymentDate) throw new Error('Please select a payment date');
 
       const payDate = new Date(paymentDate);
+      if (isNaN(payDate.getTime())) throw new Error('Invalid payment date');
+
       const dayOfMonth = getDate(payDate);
       
       // Calculate penalty for Cat C if paid after due date
       let penalty = 0;
-      if (member.category === 'C' && dayOfMonth > penaltySettings.dueDay) {
-        penalty = (Number(amount) * penaltySettings.percentage) / 100;
+      let dueDay = Number(penaltySettings?.dueDay);
+      if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) dueDay = 15;
+      
+      let penaltyPct = Number(penaltySettings?.percentage);
+      if (isNaN(penaltyPct) || penaltyPct < 0) penaltyPct = 2;
+
+      if (member.category === 'C' && dayOfMonth > dueDay) {
+        penalty = (Number(amount) * penaltyPct) / 100;
       }
 
       const monthYear = startOfMonth(payDate);
-      const dueDate = setDate(monthYear, penaltySettings.dueDay);
+      const dueDate = setDate(monthYear, dueDay);
       const receiptNumber = `RCPT-${format(new Date(), 'yyyyMMddHHmmss')}`;
+
+      const insertData: any = {
+        member_id: selectedMemberId,
+        amount: Number(amount),
+        penalty: penalty,
+        payment_date: paymentDate,
+        due_date: format(dueDate, 'yyyy-MM-dd'),
+        receipt_number: receiptNumber,
+        month_year: format(monthYear, 'yyyy-MM-dd'),
+      };
+
+      // Only add created_by if it's a valid UUID (not a mock ID like 'admin-1')
+      if (user?.id && user.id.length > 20) {
+        insertData.created_by = user.id;
+      }
 
       const { error: insertError } = await supabase
         .from('savings_installments')
-        .insert({
-          member_id: selectedMemberId,
-          amount: Number(amount),
-          penalty: penalty,
-          payment_date: paymentDate,
-          due_date: format(dueDate, 'yyyy-MM-dd'),
-          receipt_number: receiptNumber,
-          month_year: format(monthYear, 'yyyy-MM-dd'),
-          created_by: user?.id
-        });
+        .insert(insertData);
 
       if (insertError) throw insertError;
 
@@ -118,7 +133,9 @@ export function Transactions() {
   };
 
   const filteredTransactions = transactions.filter(tx => {
-    const txMonth = format(new Date(tx.payment_date), 'yyyy-MM');
+    const txDate = tx.payment_date ? new Date(tx.payment_date) : new Date();
+    const safeTxDate = isNaN(txDate.getTime()) ? new Date() : txDate;
+    const txMonth = format(safeTxDate, 'yyyy-MM');
     const matchesMonth = filterMonth === '' || txMonth === filterMonth;
     const matchesMember = filterMember === 'All' || tx.member_id === filterMember;
     return matchesMonth && matchesMember;
@@ -183,7 +200,7 @@ export function Transactions() {
               ) : (
                 filteredTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50">
-                    <td className="p-4">{format(new Date(tx.payment_date), 'dd MMM yyyy')}</td>
+                    <td className="p-4">{safeFormatDate(tx.payment_date)}</td>
                     <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>
                     <td className="p-4">
                       <div className="font-bold text-gray-800">{tx.members?.profiles?.full_name}</div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency, calculateMaturityAmount } from '../lib/utils';
+import { formatCurrency, calculateMaturityAmount, safeFormatDate } from '../lib/utils';
 import { format, differenceInMonths, addMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
@@ -75,7 +75,9 @@ export function MemberHome() {
 
   if (loading || !memberData) return <div className="p-8">Loading your passbook...</div>;
 
-  const maturityDate = addMonths(new Date(memberData.join_date), memberData.chosen_term_months || 36);
+  const joinDate = memberData.join_date ? new Date(memberData.join_date) : new Date();
+  const safeJoinDate = isNaN(joinDate.getTime()) ? new Date() : joinDate;
+  const maturityDate = addMonths(safeJoinDate, memberData.chosen_term_months || 36);
   const monthsRemaining = differenceInMonths(maturityDate, new Date());
   const isMatured = monthsRemaining <= 0;
   
@@ -145,7 +147,7 @@ export function MemberHome() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div>
               <p className="text-white/70 text-sm mb-1">Maturity Date</p>
-              <p className="text-2xl font-bold">{format(maturityDate, 'dd MMM, yyyy')}</p>
+              <p className="text-2xl font-bold">{safeFormatDate(maturityDate, 'dd MMM, yyyy')}</p>
             </div>
             <div>
               <p className="text-white/70 text-sm mb-1">Projected Maturity Amount</p>
@@ -203,7 +205,7 @@ export function MemberHome() {
               ) : (
                 recentTx.map((tx, idx) => (
                   <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="p-4 text-sm">{format(new Date(tx.payment_date), 'dd MMM, yyyy')}</td>
+                    <td className="p-4 text-sm">{safeFormatDate(tx.payment_date, 'dd MMM, yyyy')}</td>
                     <td className="p-4 text-sm font-mono text-gray-500">{tx.receipt_number}</td>
                     <td className="p-4 text-sm"><span className="bg-green-100 text-green-700 px-2.5 py-0.5 rounded-full text-xs font-medium">Installment</span></td>
                     <td className="p-4 text-sm font-bold text-right">{formatCurrency(Number(tx.amount) + Number(tx.penalty))}</td>

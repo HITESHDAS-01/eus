@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format, differenceInMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { Input, Label } from '../../components/ui/basic';
 
@@ -56,8 +56,9 @@ export function Reports() {
 
           const projectedAmount = totalSavings * (1 + roi / 100);
           
-          const joinDate = new Date(m.join_date);
-          const maturityDate = new Date(joinDate.setMonth(joinDate.getMonth() + (m.chosen_term_months || 36)));
+          const joinDate = m.join_date ? new Date(m.join_date) : new Date();
+          const safeJoinDate = isNaN(joinDate.getTime()) ? new Date() : joinDate;
+          const maturityDate = new Date(safeJoinDate.setMonth(safeJoinDate.getMonth() + (m.chosen_term_months || 36)));
           const monthsRemaining = differenceInMonths(maturityDate, new Date());
 
           let maturityStatus = 'Not Matured';
@@ -273,7 +274,7 @@ export function Reports() {
                         Cat {m.category} <span className="text-gray-400">({m.chosen_term_months || '-'}m)</span>
                       </td>
                       <td className="p-4 font-medium">{formatCurrency(m.totalSavings)}</td>
-                      <td className="p-4">{format(m.maturityDate, 'dd MMM yyyy')}</td>
+                      <td className="p-4">{safeFormatDate(m.maturityDate)}</td>
                       <td className="p-4">
                         <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                           m.maturityStatus === 'Matured' ? 'bg-green-100 text-green-700' :
@@ -293,7 +294,7 @@ export function Reports() {
                 ) : (
                   reportData.map((tx) => (
                     <tr key={tx.id} className="hover:bg-gray-50">
-                      <td className="p-4">{format(new Date(tx.payment_date), 'dd MMM yyyy')}</td>
+                      <td className="p-4">{safeFormatDate(tx.payment_date)}</td>
                       <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>
                       <td className="p-4">
                         <div className="font-bold text-gray-800">{tx.members?.profiles?.full_name}</div>
@@ -324,7 +325,7 @@ export function Reports() {
                 ) : (
                   reportData.map((tx) => (
                     <tr key={tx.id} className="hover:bg-gray-50">
-                      <td className="p-4">{format(new Date(tx.payment_date), 'dd MMM yyyy')}</td>
+                      <td className="p-4">{safeFormatDate(tx.payment_date)}</td>
                       <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>
                       <td className="p-4">
                         <div className="font-bold text-gray-800">{tx.loans?.members?.profiles?.full_name}</div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, safeFormatDate } from '../lib/utils';
 import { format } from 'date-fns';
 
 export function AdminHome() {
@@ -186,7 +186,7 @@ export function AdminHome() {
                   recentTx.map((tx, idx) => (
                     <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
                       <td className="p-4 pl-6 font-medium text-gray-700">{tx.members?.member_code}</td>
-                      <td className="p-4 text-gray-500">{format(new Date(tx.created_at), 'dd MMM yyyy')}</td>
+                      <td className="p-4 text-gray-500">{safeFormatDate(tx.created_at)}</td>
                       <td className="p-4 pr-6 font-bold text-right text-green-600">+{formatCurrency(Number(tx.amount) + Number(tx.penalty))}</td>
                     </tr>
                   ))

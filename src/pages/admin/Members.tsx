@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
+import StatementModal from '../../components/admin/StatementModal';
 
 export function Members() {
   const [members, setMembers] = useState<any[]>([]);
@@ -22,6 +23,7 @@ export function Members() {
   
   // Profile View Modal State
   const [viewingMember, setViewingMember] = useState<any | null>(null);
+  const [statementMemberId, setStatementMemberId] = useState<string | null>(null);
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -89,10 +91,29 @@ export function Members() {
     if (!memberToDelete) return;
     
     try {
-      // Delete from members first (due to foreign key constraints if any, though profiles is the parent)
+      // 1. Find all loans for this member
+      const { data: loans } = await supabase.from('loans').select('id').eq('member_id', memberToDelete);
+      
+      // 2. Delete loan repayments for those loans
+      if (loans && loans.length > 0) {
+        const loanIds = loans.map(l => l.id);
+        const { error: lrError } = await supabase.from('loan_repayments').delete().in('loan_id', loanIds);
+        if (lrError) throw lrError;
+      }
+
+      // 3. Delete loans
+      const { error: loansError } = await supabase.from('loans').delete().eq('member_id', memberToDelete);
+      if (loansError) throw loansError;
+
+      // 4. Delete savings installments
+      const { error: savingsError } = await supabase.from('savings_installments').delete().eq('member_id', memberToDelete);
+      if (savingsError) throw savingsError;
+
+      // 5. Delete from members
       const { error: memberError } = await supabase.from('members').delete().eq('id', memberToDelete);
       if (memberError) throw memberError;
 
+      // 6. Delete from profiles
       const { error: profileError } = await supabase.from('profiles').delete().eq('id', memberToDelete);
       if (profileError) throw profileError;
 
@@ -366,6 +387,9 @@ export function Members() {
                       </span>
                     </td>
                     <td className="p-4 text-right space-x-3" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setStatementMemberId(member.id)} className="text-[#1e5a48] hover:text-[#154033] font-medium text-sm" title="Print Statement">
+                        <i className="fas fa-print"></i>
+                      </button>
                       <button onClick={() => openEditModal(member)} className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm" title="Edit">
                         <i className="fas fa-edit"></i>
                       </button>
@@ -418,7 +442,7 @@ export function Members() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Date of Birth</p>
-                    <p className="font-medium text-gray-800">{viewingMember.profiles?.dob ? format(new Date(viewingMember.profiles.dob), 'dd MMM yyyy') : 'N/A'}</p>
+                    <p className="font-medium text-gray-800">{safeFormatDate(viewingMember.profiles?.dob)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Aadhaar / VID No.</p>
@@ -446,7 +470,7 @@ export function Members() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Join Date</p>
-                    <p className="font-medium text-gray-800">{format(new Date(viewingMember.join_date), 'dd MMM yyyy')}</p>
+                    <p className="font-medium text-gray-800">{safeFormatDate(viewingMember.join_date)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Monthly Installment</p>
@@ -611,6 +635,14 @@ export function Members() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Statement Modal */}
+      {statementMemberId && (
+        <StatementModal 
+          memberId={statementMemberId} 
+          onClose={() => setStatementMemberId(null)} 
+        />
       )}
     </div>
   );
