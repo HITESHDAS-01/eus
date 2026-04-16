@@ -51,7 +51,7 @@ export function Transactions() {
       // Fetch members (Cat A and C only for installments)
       const { data: membersData } = await supabase
         .from('members')
-        .select('id, member_code, category, profiles(full_name)')
+        .select('id, member_code, category, monthly_installment, profiles(full_name)')
         .in('category', ['A', 'C'])
         .eq('status', 'active');
       if (membersData) setMembers(membersData);
@@ -59,7 +59,7 @@ export function Transactions() {
       // Fetch recent transactions
       const { data: txData } = await supabase
         .from('savings_installments')
-        .select('*, members(member_code, category, profiles(full_name))')
+        .select('*, members(member_code, category, profiles(full_name, photo_url))')
         .order('created_at', { ascending: false })
         .limit(50);
       if (txData) setTransactions(txData);
@@ -203,8 +203,32 @@ export function Transactions() {
                     <td className="p-4">{safeFormatDate(tx.payment_date)}</td>
                     <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>
                     <td className="p-4">
-                      <div className="font-bold text-gray-800">{tx.members?.profiles?.full_name}</div>
-                      <div className="text-xs text-[#1e5a48]">{tx.members?.member_code}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                          {(() => {
+                            const profile = Array.isArray(tx.members?.profiles) ? tx.members?.profiles[0] : tx.members?.profiles;
+                            const photoUrl = profile?.photo_url;
+                            if (photoUrl) {
+                              return (
+                                <img 
+                                  src={photoUrl} 
+                                  alt={profile?.full_name || 'Member'} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                />
+                              );
+                            }
+                            return <i className="fas fa-user"></i>;
+                          })()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-800">
+                            {Array.isArray(tx.members?.profiles) ? tx.members?.profiles[0]?.full_name : tx.members?.profiles?.full_name}
+                          </p>
+                          <p className="text-xs font-mono text-[#1e5a48]">{tx.members?.member_code}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="p-4 text-right font-medium text-green-600">{formatCurrency(tx.amount)}</td>
                     <td className="p-4 text-right text-red-500">{tx.penalty > 0 ? formatCurrency(tx.penalty) : '-'}</td>
@@ -237,7 +261,16 @@ export function Transactions() {
                   <select 
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={selectedMemberId} 
-                    onChange={(e) => setSelectedMemberId(e.target.value)}
+                    onChange={(e) => {
+                      const newMemberId = e.target.value;
+                      setSelectedMemberId(newMemberId);
+                      const selectedMember = members.find(m => m.id === newMemberId);
+                      if (selectedMember && selectedMember.monthly_installment) {
+                        setAmount(selectedMember.monthly_installment.toString());
+                      } else {
+                        setAmount('');
+                      }
+                    }}
                     required
                   >
                     <option value="">-- Select Member --</option>

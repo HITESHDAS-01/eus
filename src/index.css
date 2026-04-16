@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Custom Scrollbar for Sidebar */
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: #f7b05e;
+  border-radius: 10px;
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #e09b4d;
+}
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #f7b05e transparent;
+}
+
 @media print {
   body * {
     visibility: hidden;

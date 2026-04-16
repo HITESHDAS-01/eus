@@ -101,11 +101,27 @@ export function MemberProfile() {
         <div className="space-y-6">
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 bg-[#1e5a48]/10 rounded-full flex items-center justify-center text-[#1e5a48] text-2xl">
-                <i className="fas fa-user"></i>
+              <div className="w-16 h-16 bg-[#1e5a48]/10 rounded-full flex items-center justify-center text-[#1e5a48] text-2xl overflow-hidden border-2 border-[#1e5a48]/20">
+                {(() => {
+                  const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+                  const photoUrl = profile?.photo_url;
+                  if (photoUrl) {
+                    return (
+                      <img 
+                        src={photoUrl} 
+                        alt={profile?.full_name || 'Member'} 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    );
+                  }
+                  return <i className="fas fa-user"></i>;
+                })()}
               </div>
               <div>
-                <h3 className="font-bold text-xl text-gray-800">{member.profiles?.full_name}</h3>
+                <h3 className="font-bold text-xl text-gray-800">
+                  {Array.isArray(member.profiles) ? member.profiles[0]?.full_name : member.profiles?.full_name}
+                </h3>
                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-block mt-1 ${
                   member.category === 'A' ? 'bg-purple-100 text-purple-700' :
                   member.category === 'B' ? 'bg-blue-100 text-blue-700' :

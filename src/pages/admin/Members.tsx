@@ -29,6 +29,8 @@ export function Members() {
   // Form State
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [memberCode, setMemberCode] = useState('');
   const [joinDate, setJoinDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [category, setCategory] = useState('C');
@@ -38,6 +40,7 @@ export function Members() {
   const [status, setStatus] = useState('active');
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     fetchMembers();
@@ -46,16 +49,35 @@ export function Members() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
+      // Try with photo_url first
       const { data, error } = await supabase
         .from('members')
         .select(`
           *,
-          profiles (full_name, phone)
+          profiles (full_name, phone, photo_url)
         `)
         .order('join_date', { ascending: false });
       
-      if (error) throw error;
-      if (data) setMembers(data);
+      if (error) {
+        console.warn('Could not fetch with photo_url, trying fallback...', error);
+        // Fallback without photo_url
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('members')
+          .select(`
+            *,
+            profiles (full_name, phone)
+          `)
+          .order('join_date', { ascending: false });
+        
+        if (fallbackError) throw fallbackError;
+        if (fallbackData) setMembers(fallbackData);
+        
+        // Inform user about missing column if they are trying to use photos
+        setError('Note: Profile pictures might not show because the "photo_url" column is missing in your database.');
+      } else if (data) {
+        setMembers(data);
+        setError('');
+      }
     } catch (err) {
       console.error('Error fetching members:', err);
     } finally {
@@ -64,14 +86,17 @@ export function Members() {
   };
 
   const openAddModal = () => {
-    setFullName(''); setPhone(''); setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd')); setCategory('C'); setInitialInvestment(''); setTerm('24'); setMonthlyInstallment('100'); setStatus('active');
+    setFullName(''); setPhone(''); setPhotoUrl(''); setPhotoFile(null); setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd')); setCategory('C'); setInitialInvestment(''); setTerm('24'); setMonthlyInstallment('100'); setStatus('active');
     setEditingMemberId(null);
     setIsAddModalOpen(true);
   };
 
   const openEditModal = (member: any) => {
-    setFullName(member.profiles?.full_name || '');
-    setPhone(member.profiles?.phone || '');
+    const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+    setFullName(profile?.full_name || '');
+    setPhone(profile?.phone || '');
+    setPhotoUrl(profile?.photo_url || '');
+    setPhotoFile(null);
     setMemberCode(member.member_code || '');
     setJoinDate(member.join_date || format(new Date(), 'yyyy-MM-dd'));
     setCategory(member.category || 'C');
@@ -132,19 +157,79 @@ export function Members() {
     setError('');
 
     try {
-      if (editingMemberId) {
-        // Update existing member
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({
-            full_name: fullName,
-            phone: phone || null,
-          })
-          .eq('id', editingMemberId);
-          
-        if (profileError) throw profileError;
+      let finalPhotoUrl = photoUrl;
+      console.log("Starting save process. Initial photoUrl:", finalPhotoUrl);
 
-        const { error: memberError } = await supabase
+      // Handle photo upload if a file is selected
+      if (photoFile) {
+        console.log("Photo file selected for upload:", photoFile.name);
+        try {
+          const fileExt = photoFile.name.split('.').pop();
+          const fileName = `${Math.random()}.${fileExt}`;
+          const filePath = `avatars/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('member-photos')
+            .upload(filePath, photoFile);
+
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('member-photos')
+              .getPublicUrl(filePath);
+            finalPhotoUrl = publicUrl;
+            console.log("Upload successful. Public URL:", finalPhotoUrl);
+          } else {
+            console.warn('Storage upload failed:', uploadError.message);
+            throw new Error(`Photo upload failed: ${uploadError.message}. Please check Supabase storage permissions.`);
+          }
+        } catch (uploadErr: any) {
+          console.error('Photo upload exception:', uploadErr);
+          throw new Error(uploadErr.message || 'Failed to upload photo.');
+        }
+      }
+
+      console.log("Proceeding to database update with finalPhotoUrl:", finalPhotoUrl);
+
+      if (editingMemberId) {
+        // Update existing member profile
+        // We try with photo_url, if it fails we try without it
+        const profileUpdateData: any = {
+          full_name: fullName,
+          phone: phone || null,
+        };
+        
+        // Only add photo_url if we have one (to avoid errors if column doesn't exist)
+        if (finalPhotoUrl) {
+          profileUpdateData.photo_url = finalPhotoUrl;
+        }
+
+        const { data: updatedProfile, error: profileError } = await supabase
+          .from('profiles')
+          .update(profileUpdateData)
+          .eq('id', editingMemberId)
+          .select();
+          
+        if (profileError && profileError.message.includes('photo_url')) {
+          // Fallback: update without photo_url
+          const { data: fallbackProfile } = await supabase
+            .from('profiles')
+            .update({
+              full_name: fullName,
+              phone: phone || null,
+            })
+            .eq('id', editingMemberId)
+            .select();
+            
+          if (!fallbackProfile || fallbackProfile.length === 0) {
+            throw new Error("Profile update was silently blocked by database security policies (RLS). Please disable RLS on the 'profiles' table or fix the update policy.");
+          }
+        } else if (profileError) {
+          throw profileError;
+        } else if (!updatedProfile || updatedProfile.length === 0) {
+          throw new Error("Profile update was silently blocked by database security policies (RLS). Please disable RLS on the 'profiles' table or fix the update policy.");
+        }
+
+        const { data: updatedMember, error: memberError } = await supabase
           .from('members')
           .update({
             member_code: memberCode.trim() !== '' ? memberCode.trim() : undefined,
@@ -155,24 +240,47 @@ export function Members() {
             chosen_term_months: category === 'B' ? 36 : Number(term),
             monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null)
           })
-          .eq('id', editingMemberId);
+          .eq('id', editingMemberId)
+          .select();
 
         if (memberError) throw memberError;
+        if (!updatedMember || updatedMember.length === 0) {
+          throw new Error("Member update was silently blocked by database security policies (RLS). Please disable RLS on the 'members' table or fix the update policy.");
+        }
         setIsEditModalOpen(false);
+        setSuccessMessage('Member updated successfully!');
       } else {
         // Add new member
         const newId = crypto.randomUUID();
         
+        const profileInsertData: any = {
+          id: newId,
+          full_name: fullName,
+          phone: phone || null,
+          role: 'member'
+        };
+
+        if (finalPhotoUrl) {
+          profileInsertData.photo_url = finalPhotoUrl;
+        }
+
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: newId,
-            full_name: fullName,
-            phone: phone || null,
-            role: 'member'
-          });
+          .insert(profileInsertData);
           
-        if (profileError) throw profileError;
+        if (profileError && profileError.message.includes('photo_url')) {
+          // Fallback: insert without photo_url
+          await supabase
+            .from('profiles')
+            .insert({
+              id: newId,
+              full_name: fullName,
+              phone: phone || null,
+              role: 'member'
+            });
+        } else if (profileError) {
+          throw profileError;
+        }
 
         const { error: memberError } = await supabase
           .from('members')
@@ -188,12 +296,17 @@ export function Members() {
 
         if (memberError) throw memberError;
         setIsAddModalOpen(false);
+        setSuccessMessage('Member added successfully!');
       }
 
       fetchMembers(); // Refresh the list
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Failed to save member.');
+      // Special hint for photo upload
+      if (err.message?.includes('photo_url')) {
+        setError('Database error: The "photo_url" column is missing in your profiles table. Please add it or contact support.');
+      }
     } finally {
       setFormLoading(false);
     }
@@ -320,6 +433,17 @@ export function Members() {
         </div>
       )}
 
+      {successMessage && (
+        <div className="p-4 rounded-lg border bg-green-50 text-green-700 border-green-200">
+          <div className="flex justify-between items-center">
+            <p>{successMessage}</p>
+            <button onClick={() => setSuccessMessage('')} className="text-current opacity-70 hover:opacity-100">
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex-1 relative">
@@ -352,8 +476,7 @@ export function Members() {
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-600">
               <tr>
-                <th className="p-4 font-medium">Member ID</th>
-                <th className="p-4 font-medium">Name</th>
+                <th className="p-4 font-medium">Member</th>
                 <th className="p-4 font-medium">Category</th>
                 <th className="p-4 font-medium">Status</th>
                 <th className="p-4 font-medium text-right">Actions</th>
@@ -362,17 +485,43 @@ export function Members() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">Loading members...</td>
+                  <td colSpan={4} className="p-8 text-center text-gray-500">Loading members...</td>
                 </tr>
               ) : filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">No members found matching your search.</td>
+                  <td colSpan={4} className="p-8 text-center text-gray-500">No members found matching your search.</td>
                 </tr>
               ) : (
                 filteredMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/admin/members/${member.id}`)}>
-                    <td className="p-4 font-mono font-medium text-[#1e5a48]">{member.member_code}</td>
-                    <td className="p-4 font-bold text-gray-800">{member.profiles?.full_name}</td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10">
+                          {(() => {
+                            const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+                            const photoUrl = profile?.photo_url;
+                            if (photoUrl) {
+                              return (
+                                <img 
+                                  src={photoUrl} 
+                                  alt={profile?.full_name || 'Member'} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                />
+                              );
+                            }
+                            return <i className="fas fa-user"></i>;
+                          })()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-800">
+                            {Array.isArray(member.profiles) ? member.profiles[0]?.full_name : member.profiles?.full_name}
+                          </p>
+                          <p className="text-xs font-mono text-[#1e5a48]">{member.member_code}</p>
+                        </div>
+                      </div>
+                    </td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                         member.category === 'A' ? 'bg-purple-100 text-purple-700' :
@@ -440,6 +589,41 @@ export function Members() {
                 <div className="space-y-2">
                   <Label>Mobile Number (Optional)</Label>
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} pattern="[0-9]{10}" placeholder="10 digit number" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Profile Picture</Label>
+                  <div className="flex items-center gap-4 p-3 border rounded-lg bg-gray-50/50">
+                    <div className="w-16 h-16 rounded-full bg-white border-2 border-[#1e5a48]/20 flex items-center justify-center overflow-hidden shadow-sm">
+                      {(photoFile || photoUrl) ? (
+                        <img 
+                          src={photoFile ? URL.createObjectURL(photoFile) : photoUrl} 
+                          className="w-full h-full object-cover" 
+                          alt="Preview" 
+                        />
+                      ) : (
+                        <i className="fas fa-user text-gray-300 text-2xl"></i>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <label className="block">
+                        <span className="sr-only">Choose profile photo</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                          className="block w-full text-sm text-gray-500
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-full file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-[#1e5a48] file:text-white
+                            hover:file:bg-[#154033]
+                            cursor-pointer"
+                        />
+                      </label>
+                      <p className="text-[10px] text-gray-400">JPG, PNG or WebP. Max 2MB.</p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">

@@ -93,7 +93,7 @@ export function Reports() {
     try {
       const { data } = await supabase
         .from('savings_installments')
-        .select('*, members(member_code, profiles(full_name))')
+        .select('*, members(member_code, profiles(full_name, photo_url))')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate)
         .order('payment_date', { ascending: false });
@@ -110,7 +110,7 @@ export function Reports() {
     try {
       const { data } = await supabase
         .from('loan_repayments')
-        .select('*, loans(members(member_code, profiles(full_name)))')
+        .select('*, loans(members(member_code, profiles(full_name, photo_url)))')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate)
         .order('payment_date', { ascending: false });
@@ -128,7 +128,7 @@ export function Reports() {
       // Get all active A & C members
       const { data: activeMembers } = await supabase
         .from('members')
-        .select('id, member_code, category, profiles(full_name, phone)')
+        .select('id, member_code, category, profiles(full_name, phone, photo_url)')
         .in('category', ['A', 'C'])
         .eq('status', 'active');
 
@@ -157,7 +157,7 @@ export function Reports() {
       // Get all active members
       const { data: activeMembers } = await supabase
         .from('members')
-        .select('id, member_code, category, profiles(full_name)')
+        .select('id, member_code, category, profiles(full_name, photo_url)')
         .eq('status', 'active')
         .order('member_code', { ascending: true });
 
@@ -305,8 +305,7 @@ export function Reports() {
               )}
               {activeTab === 'defaulter' && (
                 <tr>
-                  <th className="p-4 font-medium">Member ID</th>
-                  <th className="p-4 font-medium">Name</th>
+                  <th className="p-4 font-medium">Member</th>
                   <th className="p-4 font-medium">Category</th>
                   <th className="p-4 font-medium">Phone</th>
                 </tr>
@@ -322,8 +321,7 @@ export function Reports() {
               )}
               {activeTab === 'monthly_sheet' && (
                 <tr>
-                  <th className="p-4 font-medium">Member ID</th>
-                  <th className="p-4 font-medium">Name</th>
+                  <th className="p-4 font-medium">Member</th>
                   <th className="p-4 font-medium">Category</th>
                   <th className="p-4 font-medium text-center">Status</th>
                   <th className="p-4 font-medium text-right">Amount Paid</th>
@@ -341,8 +339,24 @@ export function Reports() {
                   filteredMembers.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="p-4">
-                        <div className="font-bold text-gray-800">{m.profiles?.full_name}</div>
-                        <div className="text-xs text-[#1e5a48]">{m.member_code}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                            {(() => {
+                              const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+                              const photoUrl = profile?.photo_url;
+                              if (photoUrl) {
+                                return (
+                                  <img src={photoUrl} alt={profile?.full_name || 'Member'} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                );
+                              }
+                              return <i className="fas fa-user"></i>;
+                            })()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{Array.isArray(m.profiles) ? m.profiles[0]?.full_name : m.profiles?.full_name}</p>
+                            <p className="text-xs font-mono text-[#1e5a48]">{m.member_code}</p>
+                          </div>
+                        </div>
                       </td>
                       <td className="p-4">
                         Cat {m.category} <span className="text-gray-400">({m.chosen_term_months || '-'}m)</span>
@@ -371,8 +385,24 @@ export function Reports() {
                       <td className="p-4">{safeFormatDate(tx.payment_date)}</td>
                       <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>
                       <td className="p-4">
-                        <div className="font-bold text-gray-800">{tx.members?.profiles?.full_name}</div>
-                        <div className="text-xs text-gray-500">{tx.members?.member_code}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                            {(() => {
+                              const profile = Array.isArray(tx.members?.profiles) ? tx.members?.profiles[0] : tx.members?.profiles;
+                              const photoUrl = profile?.photo_url;
+                              if (photoUrl) {
+                                return (
+                                  <img src={photoUrl} alt={profile?.full_name || 'Member'} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                );
+                              }
+                              return <i className="fas fa-user"></i>;
+                            })()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{Array.isArray(tx.members?.profiles) ? tx.members?.profiles[0]?.full_name : tx.members?.profiles?.full_name}</p>
+                            <p className="text-xs font-mono text-[#1e5a48]">{tx.members?.member_code}</p>
+                          </div>
+                        </div>
                       </td>
                       <td className="p-4 text-right">{formatCurrency(tx.amount)}</td>
                       <td className="p-4 text-right text-orange-500">{formatCurrency(tx.penalty)}</td>
@@ -386,8 +416,26 @@ export function Reports() {
                 ) : (
                   reportData.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-4 font-mono text-[#1e5a48]">{m.member_code}</td>
-                      <td className="p-4 font-bold text-gray-800">{m.profiles?.full_name}</td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                            {(() => {
+                              const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+                              const photoUrl = profile?.photo_url;
+                              if (photoUrl) {
+                                return (
+                                  <img src={photoUrl} alt={profile?.full_name || 'Member'} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                );
+                              }
+                              return <i className="fas fa-user"></i>;
+                            })()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{Array.isArray(m.profiles) ? m.profiles[0]?.full_name : m.profiles?.full_name}</p>
+                            <p className="text-xs font-mono text-[#1e5a48]">{m.member_code}</p>
+                          </div>
+                        </div>
+                      </td>
                       <td className="p-4">Cat {m.category}</td>
                       <td className="p-4 text-gray-600">{m.profiles?.phone}</td>
                     </tr>
@@ -402,8 +450,24 @@ export function Reports() {
                       <td className="p-4">{safeFormatDate(tx.payment_date)}</td>
                       <td className="p-4 font-mono text-xs text-gray-500">{tx.receipt_number}</td>
                       <td className="p-4">
-                        <div className="font-bold text-gray-800">{tx.loans?.members?.profiles?.full_name}</div>
-                        <div className="text-xs text-gray-500">{tx.loans?.members?.member_code}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                            {(() => {
+                              const profile = Array.isArray(tx.loans?.members?.profiles) ? tx.loans?.members?.profiles[0] : tx.loans?.members?.profiles;
+                              const photoUrl = profile?.photo_url;
+                              if (photoUrl) {
+                                return (
+                                  <img src={photoUrl} alt={profile?.full_name || 'Member'} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                );
+                              }
+                              return <i className="fas fa-user"></i>;
+                            })()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{Array.isArray(tx.loans?.members?.profiles) ? tx.loans?.members?.profiles[0]?.full_name : tx.loans?.members?.profiles?.full_name}</p>
+                            <p className="text-xs font-mono text-[#1e5a48]">{tx.loans?.members?.member_code}</p>
+                          </div>
+                        </div>
                       </td>
                       <td className="p-4 text-right">{formatCurrency(tx.principal_portion)}</td>
                       <td className="p-4 text-right font-bold text-teal-600">+{formatCurrency(tx.interest_portion)}</td>
@@ -416,8 +480,26 @@ export function Reports() {
                 ) : (
                   reportData.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-4 font-mono text-[#1e5a48]">{m.member_code}</td>
-                      <td className="p-4 font-bold text-gray-800">{m.profiles?.full_name}</td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                            {(() => {
+                              const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+                              const photoUrl = profile?.photo_url;
+                              if (photoUrl) {
+                                return (
+                                  <img src={photoUrl} alt={profile?.full_name || 'Member'} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                );
+                              }
+                              return <i className="fas fa-user"></i>;
+                            })()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{Array.isArray(m.profiles) ? m.profiles[0]?.full_name : m.profiles?.full_name}</p>
+                            <p className="text-xs font-mono text-[#1e5a48]">{m.member_code}</p>
+                          </div>
+                        </div>
+                      </td>
                       <td className="p-4">Cat {m.category}</td>
                       <td className="p-4 text-center">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center justify-center gap-1 w-max mx-auto ${

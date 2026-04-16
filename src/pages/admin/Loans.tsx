@@ -65,7 +65,7 @@ export function Loans() {
         .from('loans')
         .select(`
           *,
-          members(member_code, profiles(full_name))
+          members(member_code, profiles(full_name, photo_url))
         `)
         .eq('status', 'active');
       if (loansData) setActiveLoans(loansData);
@@ -354,8 +354,32 @@ export function Loans() {
                 activeLoans.map((loan) => (
                   <tr key={loan.id} className="hover:bg-gray-50 transition-colors">
                     <td className="p-4">
-                      <div className="font-bold text-gray-800">{loan.members?.profiles?.full_name}</div>
-                      <div className="text-xs text-gray-500">{loan.members?.member_code}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10 shrink-0">
+                          {(() => {
+                            const profile = Array.isArray(loan.members?.profiles) ? loan.members?.profiles[0] : loan.members?.profiles;
+                            const photoUrl = profile?.photo_url;
+                            if (photoUrl) {
+                              return (
+                                <img 
+                                  src={photoUrl} 
+                                  alt={profile?.full_name || 'Member'} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                />
+                              );
+                            }
+                            return <i className="fas fa-user"></i>;
+                          })()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-800">
+                            {Array.isArray(loan.members?.profiles) ? loan.members?.profiles[0]?.full_name : loan.members?.profiles?.full_name}
+                          </p>
+                          <p className="text-xs font-mono text-[#1e5a48]">{loan.members?.member_code}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="p-4 text-gray-600">{safeFormatDate(loan.disbursed_date)}</td>
                     <td className="p-4 text-right font-medium">{formatCurrency(loan.principal_amount)}</td>

@@ -8,6 +8,7 @@ import { Loans } from './admin/Loans';
 import { Settings } from './admin/Settings';
 import { Reports } from './admin/Reports';
 import { MemberProfile } from './admin/MemberProfile';
+import { Investments } from './admin/Investments';
 
 export function AdminDashboard() {
   const { logout } = useAuth();
@@ -25,6 +26,7 @@ export function AdminDashboard() {
     { path: '/admin/members', label: 'Members', icon: 'fas fa-users' },
     { path: '/admin/transactions', label: 'Transactions', icon: 'fas fa-rupee-sign' },
     { path: '/admin/loans', label: 'Loans', icon: 'fas fa-hand-holding-usd' },
+    { path: '/admin/investments', label: 'Investments', icon: 'fas fa-chart-line' },
     { path: '/admin/reports', label: 'Reports', icon: 'fas fa-chart-bar' },
     { path: '/admin/settings', label: 'Settings', icon: 'fas fa-cog' },
   ];
@@ -36,13 +38,15 @@ export function AdminDashboard() {
         className={`${isSidebarOpen ? 'w-72' : 'w-0 lg:w-20'} transition-all duration-300 ease-in-out bg-[#0b3b2f] text-white flex flex-col shadow-2xl z-20 overflow-hidden lg:rounded-r-3xl`}
       >
         <div className="h-16 flex items-center px-4 shrink-0">
-          <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-10 h-10 object-contain bg-white rounded-xl p-1 shadow-sm shrink-0" referrerPolicy="no-referrer" />
-          <span className={`ml-3 font-bold text-lg tracking-wide whitespace-nowrap transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>
-            Admin Panel
-          </span>
+          <Link to="/" className="flex items-center" title="Back to Site">
+            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-10 h-10 object-contain bg-white rounded-xl p-1 shadow-sm shrink-0 hover:ring-2 hover:ring-[#f7b05e] transition-all" referrerPolicy="no-referrer" />
+            <span className={`ml-3 font-bold text-lg tracking-wide whitespace-nowrap transition-opacity duration-300 hover:text-[#f7b05e] ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>
+              Admin Panel
+            </span>
+          </Link>
         </div>
         
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto sidebar-scrollbar">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
             return (
@@ -65,7 +69,17 @@ export function AdminDashboard() {
           })}
         </nav>
         
-        <div className="p-3 shrink-0">
+        <div className="p-3 shrink-0 border-t border-white/10 space-y-1">
+          <Link
+            to="/"
+            className={`flex items-center px-4 py-3.5 w-full rounded-full text-[#f7b05e] hover:bg-[#f7b05e]/10 transition-all duration-200 ${!isSidebarOpen && 'justify-center lg:justify-start'}`}
+            title={!isSidebarOpen ? 'Back to Site' : undefined}
+          >
+            <i className="fas fa-globe text-lg w-6 text-center shrink-0"></i>
+            <span className={`ml-3 font-medium whitespace-nowrap transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>
+              Back to Site
+            </span>
+          </Link>
           <button
             onClick={handleLogout}
             className={`flex items-center px-4 py-3.5 w-full rounded-full text-red-300 hover:bg-red-500/10 hover:text-red-200 transition-all duration-200 ${!isSidebarOpen && 'justify-center lg:justify-start'}`}
@@ -115,6 +129,7 @@ export function AdminDashboard() {
               <Route path="/members/*" element={<Members />} />
               <Route path="/transactions/*" element={<Transactions />} />
               <Route path="/loans/*" element={<Loans />} />
+              <Route path="/investments/*" element={<Investments />} />
               <Route path="/reports/*" element={<Reports />} />
               <Route path="/settings/*" element={<Settings />} />
             </Routes>

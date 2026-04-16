@@ -24,7 +24,7 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
         // Fetch member details
         const { data: member } = await supabase
           .from('members')
-          .select('*, profiles(full_name, phone)')
+          .select('*, profiles(full_name, phone, photo_url)')
           .eq('id', memberId)
           .single();
         
@@ -76,9 +76,9 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
     const opt = {
       margin:       0.5,
       filename:     `Account_Statement_${memberData?.member_code || 'Member'}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
+      image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' as const }
     };
 
     // Use html2pdf to generate and download the PDF
@@ -122,30 +122,53 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
         <div className="p-8 overflow-y-auto print:overflow-visible print:p-0" id="printable-statement">
           
           {/* Statement Header */}
-          <div className="flex flex-col items-center text-center mb-8 border-b pb-6" style={{ borderColor: '#e5e7eb' }}>
-            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-16 h-16 object-contain mb-3" referrerPolicy="no-referrer" />
-            <h1 className="text-3xl font-bold tracking-wider mb-1" style={{ color: '#111827' }}>একতা উন্নয়ন সংস্থা</h1>
-            <p className="text-sm font-medium" style={{ color: '#6b7280' }}>Member Account Statement</p>
-            <p className="text-xs mt-2" style={{ color: '#9ca3af' }}>Generated on: {format(new Date(), 'dd MMM yyyy, hh:mm a')}</p>
+          <div className="flex justify-between items-start mb-8 border-b pb-6" style={{ borderColor: '#e5e7eb' }}>
+            <div className="text-left">
+              <h1 className="text-3xl font-bold tracking-wider mb-1" style={{ color: '#111827' }}>একতা উন্নয়ন সংস্থা</h1>
+              <p className="text-sm font-medium" style={{ color: '#6b7280' }}>Member Account Statement</p>
+              <p className="text-xs mt-2" style={{ color: '#9ca3af' }}>Generated on: {format(new Date(), 'dd MMM yyyy, hh:mm a')}</p>
+            </div>
+            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-28 h-28 object-contain" referrerPolicy="no-referrer" />
           </div>
 
           {/* Member Details */}
-          <div className="grid grid-cols-2 gap-6 mb-8 p-6 rounded-lg print:bg-transparent print:border print:p-4" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
-            <div>
-              <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Member Name</p>
-              <p className="font-bold text-lg" style={{ color: '#111827' }}>{memberData.profiles?.full_name}</p>
-            </div>
-            <div>
-              <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Member ID</p>
-              <p className="font-mono font-medium" style={{ color: '#111827' }}>{memberData.member_code}</p>
-            </div>
-            <div>
-              <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Category & Status</p>
-              <p className="font-medium" style={{ color: '#111827' }}>Category {memberData.category} • <span className="capitalize">{memberData.status}</span></p>
-            </div>
-            <div>
-              <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Join Date</p>
-              <p className="font-medium" style={{ color: '#111827' }}>{safeFormatDate(memberData.join_date)}</p>
+          <div className="flex gap-6 mb-8 p-6 rounded-lg print:bg-transparent print:border print:p-4" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
+            {(() => {
+              const profile = Array.isArray(memberData.profiles) ? memberData.profiles[0] : memberData.profiles;
+              const photoUrl = profile?.photo_url;
+              if (photoUrl) {
+                return (
+                  <div className="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
+                    <img 
+                      src={photoUrl} 
+                      alt={profile?.full_name || 'Member'} 
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            <div className="grid grid-cols-2 gap-x-12 gap-y-4 flex-1">
+              <div>
+                <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Member Name</p>
+                <p className="font-bold text-lg" style={{ color: '#111827' }}>
+                  {Array.isArray(memberData.profiles) ? memberData.profiles[0]?.full_name : memberData.profiles?.full_name}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Member ID</p>
+                <p className="font-mono font-medium" style={{ color: '#111827' }}>{memberData.member_code}</p>
+              </div>
+              <div>
+                <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Category & Status</p>
+                <p className="font-medium" style={{ color: '#111827' }}>Category {memberData.category} • <span className="capitalize">{memberData.status}</span></p>
+              </div>
+              <div>
+                <p className="text-sm mb-1" style={{ color: '#6b7280' }}>Join Date</p>
+                <p className="font-medium" style={{ color: '#111827' }}>{safeFormatDate(memberData.join_date)}</p>
+              </div>
             </div>
           </div>
 

@@ -30,13 +30,15 @@ export function MemberDashboard() {
       {/* Sidebar */}
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm z-10">
         <div className="p-6 border-b border-gray-100 flex flex-col items-center gap-3">
-          <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-16 h-16 object-contain" referrerPolicy="no-referrer" />
+          <Link to="/" title="Back to Site">
+            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-16 h-16 object-contain hover:ring-2 hover:ring-[#1e5a48] rounded-xl transition-all" referrerPolicy="no-referrer" />
+          </Link>
           <div className="text-center">
             <h2 className="font-bold text-gray-800">Member Portal</h2>
             <p className="text-xs text-gray-500">ID: {memberId || 'Loading...'}</p>
           </div>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto sidebar-scrollbar">
           {navItems.map((item) => (
             <Link
               key={item.path}
@@ -52,7 +54,14 @@ export function MemberDashboard() {
             </Link>
           ))}
         </nav>
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-100 space-y-2">
+          <Link
+            to="/"
+            className="flex items-center justify-center gap-2 px-4 py-3 w-full rounded-xl text-[#1e5a48] hover:bg-[#1e5a48]/10 transition-colors font-medium border border-transparent"
+          >
+            <i className="fas fa-globe"></i>
+            Back to Site
+          </Link>
           <button
             onClick={handleLogout}
             className="flex items-center justify-center gap-2 px-4 py-3 w-full rounded-xl text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors font-medium border border-transparent hover:border-red-100"
