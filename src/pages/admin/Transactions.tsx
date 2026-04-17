@@ -22,7 +22,7 @@ export function Transactions() {
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
-  const [penaltySettings, setPenaltySettings] = useState({ percentage: 5, dueDay: 15 });
+  const [penaltySettings, setPenaltySettings] = useState({ percentage: 5, dueDay: 15, gracePeriod: 3 });
 
   useEffect(() => {
     fetchData();
@@ -35,17 +35,10 @@ export function Transactions() {
       const { data: settingsData } = await supabase.from('settings').select('*');
       if (settingsData) {
         const penaltyPct = settingsData.find(s => s.key === 'penalty_percentage')?.value || 5;
-        let dueDay = settingsData.find(s => s.key === 'monthly_due_day')?.value;
-        
-        // Auto-migrate from 10 to 15 if it hasn't been changed manually
-        if (dueDay === 10) {
-          await supabase.from('settings').update({ value: 15 }).eq('key', 'monthly_due_day');
-          dueDay = 15;
-        } else if (!dueDay) {
-          dueDay = 15;
-        }
+        const gracePeriod = settingsData.find(s => s.key === 'grace_period_days')?.value || 3;
+        let dueDay = settingsData.find(s => s.key === 'monthly_due_day')?.value || 15;
 
-        setPenaltySettings({ percentage: Number(penaltyPct), dueDay: Number(dueDay) });
+        setPenaltySettings({ percentage: Number(penaltyPct), dueDay: Number(dueDay), gracePeriod: Number(gracePeriod) });
       }
 
       // Fetch members (Cat A and C only for installments)
@@ -85,15 +78,18 @@ export function Transactions() {
 
       const dayOfMonth = getDate(payDate);
       
-      // Calculate penalty for Cat C if paid after due date
+      // Calculate penalty for Cat C if paid after due date + grace period
       let penalty = 0;
       let dueDay = Number(penaltySettings?.dueDay);
       if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) dueDay = 15;
       
       let penaltyPct = Number(penaltySettings?.percentage);
       if (isNaN(penaltyPct) || penaltyPct < 0) penaltyPct = 2;
+      
+      let gracePeriod = Number(penaltySettings?.gracePeriod);
+      if (isNaN(gracePeriod) || gracePeriod < 0) gracePeriod = 3;
 
-      if (member.category === 'C' && dayOfMonth > dueDay) {
+      if (member.category === 'C' && dayOfMonth > (dueDay + gracePeriod)) {
         penalty = (Number(amount) * penaltyPct) / 100;
       }
 
@@ -285,7 +281,7 @@ export function Transactions() {
                 <div className="space-y-2">
                   <Label>Payment Date</Label>
                   <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required />
-                  <p className="text-xs text-gray-500">Penalty of {penaltySettings.percentage}% will be auto-applied if date is after the {penaltySettings.dueDay}th.</p>
+                  <p className="text-xs text-gray-500">Penalty of {penaltySettings.percentage}% will be auto-applied if date is after the {penaltySettings.dueDay + penaltySettings.gracePeriod}th ({penaltySettings.dueDay}th + {penaltySettings.gracePeriod} days grace).</p>
                 </div>
 
                 <div className="space-y-2">
