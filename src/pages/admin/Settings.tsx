@@ -240,7 +240,7 @@ export function Settings() {
     setBackupLoading(true);
     setBackupMessage('');
     try {
-      const tables = ['profiles', 'members', 'savings_installments', 'loan_applications', 'loan_repayments', 'settings', 'org_profile'];
+      const tables = ['profiles', 'members', 'savings_installments', 'loans', 'loan_repayments', 'settings', 'org_profile'];
       const backupData: Record<string, any> = {};
 
       for (const table of tables) {
