@@ -43,7 +43,7 @@ export function MemberDashboard() {
 
   useEffect(() => {
     if (memberId) {
-      supabase.from('members').select('*, profiles(full_name)').eq('id', memberId).single()
+      supabase.from('members').select('*, profiles(full_name, photo_url)').eq('id', memberId).single()
         .then(({ data }) => setMemberProfile(data));
     }
   }, [memberId]);
@@ -147,8 +147,14 @@ export function MemberDashboard() {
                 <p className="text-sm font-bold text-white pr-2">{Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0]?.full_name : memberProfile?.profiles?.full_name || 'Member User'}</p>
                 <p className="text-xs text-gray-300 pr-2">{t.header.category} {memberProfile?.category || '-'}</p>
               </div>
-              <div className="w-10 h-10 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md cursor-pointer hover:shadow-lg transition-shadow">
-                <i className="fas fa-user"></i>
+              <div className="w-10 h-10 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md cursor-pointer hover:shadow-lg transition-shadow overflow-hidden">
+                {(() => {
+                  const profile = Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0] : memberProfile?.profiles;
+                  if (profile?.photo_url) {
+                    return <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" />;
+                  }
+                  return <i className="fas fa-user"></i>;
+                })()}
               </div>
             </div>
           </div>

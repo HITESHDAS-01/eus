@@ -225,7 +225,7 @@ export function MemberHome() {
         <div className="p-0">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-50 text-gray-500 text-sm">
+              <tr className="bg-[#1a5f4a] text-white text-sm">
                 <th className="p-4 font-medium">{t.home.date}</th>
                 <th className="p-4 font-medium">{t.home.receiptNo}</th>
                 <th className="p-4 font-medium">{t.home.type}</th>

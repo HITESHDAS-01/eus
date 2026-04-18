@@ -53,7 +53,7 @@ export function MemberTransactions() {
             <div className="p-8 text-center text-gray-500">{t.history.noTx}</div>
           ) : (
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 text-gray-600">
+              <thead className="bg-[#1a5f4a] text-white">
                 <tr>
                   <th className="p-4 font-medium">{t.history.paymentDate}</th>
                   <th className="p-4 font-medium">{t.history.monthYear}</th>
