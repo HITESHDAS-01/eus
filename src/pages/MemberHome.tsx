@@ -125,7 +125,12 @@ export function MemberHome() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">{t.home.passbookOverview}</h2>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-800 mb-1">
+          {t.home.welcome}, <span className="text-[#1a5f4a]">{Array.isArray(memberData.profiles) ? memberData.profiles[0]?.full_name : memberData.profiles?.full_name || 'Member'}</span> 👋
+        </h1>
+        <p className="text-gray-500">{t.home.passbookOverview}</p>
+      </div>
       
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -222,8 +227,8 @@ export function MemberHome() {
           <h3 className="text-lg font-bold text-gray-800">{t.home.recentTransactions}</h3>
           <button className="text-[#1e5a48] text-sm font-medium hover:underline">{t.home.viewAll}</button>
         </div>
-        <div className="p-0">
-          <table className="w-full text-left border-collapse">
+        <div className="p-0 overflow-x-auto">
+          <table className="w-full text-left border-collapse whitespace-nowrap">
             <thead>
               <tr className="bg-[#1a5f4a] text-white text-sm">
                 <th className="p-4 font-medium">{t.home.date}</th>

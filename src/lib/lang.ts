@@ -13,8 +13,19 @@ export const translations = {
     header: {
       orgName: 'Ekata Unnayan Sanstha',
       category: 'Category',
+      profile: {
+        title: 'Member Profile',
+        memberCode: 'Member Code',
+        phone: 'Phone Number',
+        joinDate: 'Join Date',
+        status: 'Status',
+        close: 'Close',
+        category: 'Category',
+        savingAmt: 'Monthly Saving'
+      }
     },
     home: {
+      welcome: 'Welcome',
       passbookOverview: 'My Passbook Overview',
       totalSavings: 'Total Savings',
       loanEligibility: 'Loan Eligibility',
@@ -80,8 +91,19 @@ export const translations = {
     header: {
       orgName: 'একতা উন্নয়ন সংস্থা',
       category: 'শ্ৰেণী',
+      profile: {
+        title: 'সদস্যৰ প্ৰফাইল',
+        memberCode: 'সদস্য ID',
+        phone: 'ফোন নম্বৰ',
+        joinDate: 'যোগদানৰ তাৰিখ',
+        status: 'অৱস্থা',
+        close: 'বন্ধ কৰক',
+        category: 'শ্ৰেণী',
+        savingAmt: 'মাহিলী সঞ্চয়'
+      }
     },
     home: {
+      welcome: 'স্বাগতম',
       passbookOverview: 'মোৰ পাছবুকৰ অৱলোকন',
       totalSavings: 'মুঠ সঞ্চয়',
       loanEligibility: 'ঋণ যোগ্যতা',

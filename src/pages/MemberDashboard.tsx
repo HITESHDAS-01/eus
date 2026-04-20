@@ -6,6 +6,7 @@ import { MemberHome } from './MemberHome';
 import { MemberTransactions } from './MemberTransactions';
 import { MemberLoans } from './MemberLoans';
 import { translations } from '../lib/lang';
+import { safeFormatDate, formatCurrency } from '../lib/utils';
 
 export function MemberDashboard() {
   const { logout, memberId } = useAuth();
@@ -14,6 +15,7 @@ export function MemberDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [memberProfile, setMemberProfile] = useState<any>(null);
   const [lang, setLang] = useState<'as' | 'en'>('as');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   useEffect(() => {
     const savedLang = localStorage.getItem('eus_lang');
@@ -147,11 +149,14 @@ export function MemberDashboard() {
                 <p className="text-sm font-bold text-white pr-2">{Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0]?.full_name : memberProfile?.profiles?.full_name || 'Member User'}</p>
                 <p className="text-xs text-gray-300 pr-2">{t.header.category} {memberProfile?.category || '-'}</p>
               </div>
-              <div className="w-10 h-10 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md cursor-pointer hover:shadow-lg transition-shadow overflow-hidden">
+              <div 
+                className="w-10 h-10 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
+                onClick={() => setIsProfileModalOpen(true)}
+              >
                 {(() => {
                   const profile = Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0] : memberProfile?.profiles;
                   if (profile?.photo_url) {
-                    return <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" />;
+                    return <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />;
                   }
                   return <i className="fas fa-user"></i>;
                 })()}
@@ -171,6 +176,73 @@ export function MemberDashboard() {
           </div>
         </main>
       </div>
+
+      {isProfileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-[#0b3b2f] p-4 flex justify-between items-center text-white">
+              <h2 className="text-xl font-bold">{t.header.profile.title}</h2>
+              <button 
+                onClick={() => setIsProfileModalOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
+                title={t.header.profile.close}
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-24 h-24 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md border-4 border-white -mt-12 overflow-hidden bg-white mb-3 text-4xl">
+                  {(() => {
+                    const profile = Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0] : memberProfile?.profiles;
+                    if (profile?.photo_url) {
+                      return <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />;
+                    }
+                    return <i className="fas fa-user"></i>;
+                  })()}
+                </div>
+                <h3 className="text-2xl font-bold text-gray-800 text-center">
+                  {Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0]?.full_name : memberProfile?.profiles?.full_name || 'Member'}
+                </h3>
+                <p className="text-[#1a5f4a] font-medium bg-[#1a5f4a]/10 px-3 py-1 rounded-full text-sm mt-2">
+                  {t.header.profile.status}: Active
+                </p>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                  <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-id-badge w-4"></i> {t.header.profile.memberCode}</span>
+                  <span className="font-semibold text-gray-800">{memberProfile?.member_code || '-'}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                  <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-layer-group w-4"></i> {t.header.profile.category}</span>
+                  <span className="font-semibold text-gray-800">{memberProfile?.category || '-'}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                  <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-calendar-alt w-4"></i> {t.header.profile.joinDate}</span>
+                  <span className="font-semibold text-gray-800">{safeFormatDate(memberProfile?.join_date)}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                  <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-piggy-bank w-4"></i> {t.header.profile.savingAmt}</span>
+                  <span className="font-semibold text-[#1a5f4a]">{formatCurrency(memberProfile?.monthly_saving_amount || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-phone w-4"></i> {t.header.profile.phone}</span>
+                  <span className="font-semibold text-gray-800">{memberProfile?.contact_number || '-'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-4 shrink-0 flex justify-end rounded-b-2xl border-t border-gray-100">
+              <button 
+                onClick={() => setIsProfileModalOpen(false)}
+                className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium transition-colors"
+              >
+                {t.header.profile.close}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
