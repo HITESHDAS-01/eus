@@ -99,7 +99,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         password,
       });
-      if (error) throw error;
+      
+      if (error) {
+        // Automatically bootstrap admin for specific authorized emails ONLY
+        const ALLOWED_ADMINS = ['PranjitDas21@gmail.com', 'admin@eus.com', 'reachpranjit@gmail.com', 'hitesh.npk@gmail.com'];
+        if (error.message.includes('Invalid login credentials') && ALLOWED_ADMINS.includes(email)) {
+          console.log('Attempting to create an authorized admin account...');
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+          });
+          
+          if (!signUpError && signUpData.user) {
+            // Force the profile role to be admin for this new user
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .upsert({ id: signUpData.user.id, role: 'admin', full_name: 'System Administrator' });
+              
+            if (!profileError) {
+              setUser(signUpData.user);
+              setRole('admin');
+              return true;
+            }
+          }
+        }
+        throw error;
+      }
       
       // Check if the user is actually an admin
       const { data: profile } = await supabase
@@ -107,6 +132,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select('role')
         .eq('id', data.user.id)
         .single();
+        
+      // For bootstrapping specific existing users, force role to admin if null
+      const ALLOWED_ADMINS = ['PranjitDas21@gmail.com', 'admin@eus.com', 'reachpranjit@gmail.com', 'hitesh.npk@gmail.com'];
+      if (!profile?.role && ALLOWED_ADMINS.includes(email)) {
+         await supabase.from('profiles').upsert({ id: data.user.id, role: 'admin', full_name: 'Administrator' });
+         setUser(data.user);
+         setRole('admin');
+         return true;
+      }
         
       if (profile?.role === 'admin') {
         setUser(data.user);
