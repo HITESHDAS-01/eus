@@ -1,15 +1,47 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
-import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import StatementModal from '../../components/admin/StatementModal';
 
+type MemberRow = {
+  id: string;
+  member_code: string;
+  category: 'A' | 'B' | 'C';
+  status: string;
+  join_date: string;
+  initial_investment: number | null;
+  monthly_installment: number | null;
+  chosen_term_months: number | null;
+  profiles: { full_name: string | null; phone: string | null; photo_url: string | null } | null;
+};
+
+async function callEdgeFunction<T>(name: string, payload: unknown): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${name}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(body?.error || `${name} failed (${resp.status})`);
+  }
+  return body as T;
+}
+
 export function Members() {
   const navigate = useNavigate();
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -19,28 +51,26 @@ export function Members() {
   const [importMessage, setImportMessage] = useState({ type: '', text: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
-  
-  // Profile View Modal State
   const [statementMemberId, setStatementMemberId] = useState<string | null>(null);
 
-  // Form State
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [memberCode, setMemberCode] = useState('');
   const [joinDate, setJoinDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [category, setCategory] = useState('C');
+  const [category, setCategory] = useState<'A' | 'B' | 'C'>('C');
   const [initialInvestment, setInitialInvestment] = useState('');
   const [term, setTerm] = useState('24');
   const [monthlyInstallment, setMonthlyInstallment] = useState('100');
   const [status, setStatus] = useState('active');
+  const [initialPassword, setInitialPassword] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [lastCreatedCredentials, setLastCreatedCredentials] = useState<{ code: string; password: string } | null>(null);
 
   useEffect(() => {
     fetchMembers();
@@ -48,58 +78,42 @@ export function Members() {
 
   const fetchMembers = async () => {
     setLoading(true);
-    try {
-      // Try with photo_url first
-      const { data, error } = await supabase
-        .from('members')
-        .select(`
-          *,
-          profiles (full_name, phone, photo_url)
-        `)
-        .order('join_date', { ascending: false });
-      
-      if (error) {
-        console.warn('Could not fetch with photo_url, trying fallback...', error);
-        // Fallback without photo_url
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('members')
-          .select(`
-            *,
-            profiles (full_name, phone)
-          `)
-          .order('join_date', { ascending: false });
-        
-        if (fallbackError) throw fallbackError;
-        if (fallbackData) setMembers(fallbackData);
-        
-        // Inform user about missing column if they are trying to use photos
-        setError('Note: Profile pictures might not show because the "photo_url" column is missing in your database.');
-      } else if (data) {
-        setMembers(data);
-        setError('');
-      }
-    } catch (err) {
-      console.error('Error fetching members:', err);
-    } finally {
-      setLoading(false);
+    setError('');
+    const { data, error: err } = await supabase
+      .from('members')
+      .select('id, member_code, category, status, join_date, initial_investment, monthly_installment, chosen_term_months, profiles(full_name, phone, photo_url)')
+      .order('join_date', { ascending: false });
+    if (err) {
+      setError(err.message);
+    } else if (data) {
+      setMembers(data as unknown as MemberRow[]);
     }
+    setLoading(false);
+  };
+
+  const resetForm = () => {
+    setFullName(''); setPhone(''); setPhotoUrl(''); setPhotoFile(null);
+    setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd'));
+    setCategory('C'); setInitialInvestment(''); setTerm('24');
+    setMonthlyInstallment('100'); setStatus('active');
+    setInitialPassword(''); setError('');
   };
 
   const openAddModal = () => {
-    setFullName(''); setPhone(''); setPhotoUrl(''); setPhotoFile(null); setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd')); setCategory('C'); setInitialInvestment(''); setTerm('24'); setMonthlyInstallment('100'); setStatus('active');
+    resetForm();
     setEditingMemberId(null);
     setIsAddModalOpen(true);
   };
 
-  const openEditModal = (member: any) => {
-    const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+  const openEditModal = (member: MemberRow) => {
+    const profile = member.profiles;
     setFullName(profile?.full_name || '');
     setPhone(profile?.phone || '');
     setPhotoUrl(profile?.photo_url || '');
     setPhotoFile(null);
     setMemberCode(member.member_code || '');
     setJoinDate(member.join_date || format(new Date(), 'yyyy-MM-dd'));
-    setCategory(member.category || 'C');
+    setCategory(member.category);
     setInitialInvestment(member.initial_investment?.toString() || '');
     setTerm(member.chosen_term_months?.toString() || '24');
     setMonthlyInstallment(member.monthly_installment?.toString() || '100');
@@ -115,198 +129,96 @@ export function Members() {
 
   const handleDeleteMember = async () => {
     if (!memberToDelete) return;
-    
     try {
-      // 1. Find all loans for this member
-      const { data: loans } = await supabase.from('loans').select('id').eq('member_id', memberToDelete);
-      
-      // 2. Delete loan repayments for those loans
-      if (loans && loans.length > 0) {
-        const loanIds = loans.map(l => l.id);
-        const { error: lrError } = await supabase.from('loan_repayments').delete().in('loan_id', loanIds);
-        if (lrError) throw lrError;
-      }
-
-      // 3. Delete loans
-      const { error: loansError } = await supabase.from('loans').delete().eq('member_id', memberToDelete);
-      if (loansError) throw loansError;
-
-      // 4. Delete savings installments
-      const { error: savingsError } = await supabase.from('savings_installments').delete().eq('member_id', memberToDelete);
-      if (savingsError) throw savingsError;
-
-      // 5. Delete from members
-      const { error: memberError } = await supabase.from('members').delete().eq('id', memberToDelete);
-      if (memberError) throw memberError;
-
-      // 6. Delete from profiles
-      const { error: profileError } = await supabase.from('profiles').delete().eq('id', memberToDelete);
-      if (profileError) throw profileError;
-
+      // Edge function deletes auth.users; profiles/members cascade via FK.
+      await callEdgeFunction('admin-delete-member', { member_id: memberToDelete });
       setMemberToDelete(null);
       fetchMembers();
-    } catch (err: any) {
-      console.error(err);
-      setDeleteError('Failed to delete member: ' + err.message);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete member.');
     }
+  };
+
+  const uploadPhotoIfNeeded = async (): Promise<string> => {
+    if (!photoFile) return photoUrl;
+    const fileExt = photoFile.name.split('.').pop();
+    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+    const { error: uploadError } = await supabase.storage
+      .from('member-photos')
+      .upload(filePath, photoFile);
+    if (uploadError) {
+      throw new Error(`Photo upload failed: ${uploadError.message}`);
+    }
+    const { data: { publicUrl } } = supabase.storage.from('member-photos').getPublicUrl(filePath);
+    return publicUrl;
   };
 
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     setError('');
+    setLastCreatedCredentials(null);
 
     try {
-      let finalPhotoUrl = photoUrl;
-      console.log("Starting save process. Initial photoUrl:", finalPhotoUrl);
-
-      // Handle photo upload if a file is selected
-      if (photoFile) {
-        console.log("Photo file selected for upload:", photoFile.name);
-        try {
-          const fileExt = photoFile.name.split('.').pop();
-          const fileName = `${Math.random()}.${fileExt}`;
-          const filePath = `avatars/${fileName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from('member-photos')
-            .upload(filePath, photoFile);
-
-          if (!uploadError) {
-            const { data: { publicUrl } } = supabase.storage
-              .from('member-photos')
-              .getPublicUrl(filePath);
-            finalPhotoUrl = publicUrl;
-            console.log("Upload successful. Public URL:", finalPhotoUrl);
-          } else {
-            console.warn('Storage upload failed:', uploadError.message);
-            throw new Error(`Photo upload failed: ${uploadError.message}. Please check Supabase storage permissions.`);
-          }
-        } catch (uploadErr: any) {
-          console.error('Photo upload exception:', uploadErr);
-          throw new Error(uploadErr.message || 'Failed to upload photo.');
-        }
-      }
-
-      console.log("Proceeding to database update with finalPhotoUrl:", finalPhotoUrl);
+      const finalPhotoUrl = await uploadPhotoIfNeeded();
 
       if (editingMemberId) {
-        // Update existing member profile
-        // We try with photo_url, if it fails we try without it
-        const profileUpdateData: any = {
-          full_name: fullName,
-          phone: phone || null,
-        };
-        
-        // Only add photo_url if we have one (to avoid errors if column doesn't exist)
-        if (finalPhotoUrl) {
-          profileUpdateData.photo_url = finalPhotoUrl;
-        }
-
-        const { data: updatedProfile, error: profileError } = await supabase
-          .from('profiles')
-          .update(profileUpdateData)
-          .eq('id', editingMemberId)
-          .select();
-          
-        if (profileError && profileError.message.includes('photo_url')) {
-          // Fallback: update without photo_url
-          const { data: fallbackProfile } = await supabase
-            .from('profiles')
-            .update({
-              full_name: fullName,
-              phone: phone || null,
-            })
-            .eq('id', editingMemberId)
-            .select();
-            
-          if (!fallbackProfile || fallbackProfile.length === 0) {
-            throw new Error("Profile update was silently blocked by database security policies (RLS). Please disable RLS on the 'profiles' table or fix the update policy.");
-          }
-        } else if (profileError) {
-          throw profileError;
-        } else if (!updatedProfile || updatedProfile.length === 0) {
-          throw new Error("Profile update was silently blocked by database security policies (RLS). Please disable RLS on the 'profiles' table or fix the update policy.");
-        }
-
-        const { data: updatedMember, error: memberError } = await supabase
-          .from('members')
-          .update({
-            member_code: memberCode.trim() !== '' ? memberCode.trim() : undefined,
-            join_date: joinDate,
-            category: category,
-            status: status,
-            initial_investment: category === 'C' ? 0 : Number(initialInvestment),
-            chosen_term_months: category === 'B' ? 36 : Number(term),
-            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null)
-          })
-          .eq('id', editingMemberId)
-          .select();
-
-        if (memberError) throw memberError;
-        if (!updatedMember || updatedMember.length === 0) {
-          throw new Error("Member update was silently blocked by database security policies (RLS). Please disable RLS on the 'members' table or fix the update policy.");
-        }
-        setIsEditModalOpen(false);
-        setSuccessMessage('Member updated successfully!');
-      } else {
-        // Add new member
-        const newId = crypto.randomUUID();
-        
-        const profileInsertData: any = {
-          id: newId,
-          full_name: fullName,
-          phone: phone || null,
-          role: 'member'
-        };
-
-        if (finalPhotoUrl) {
-          profileInsertData.photo_url = finalPhotoUrl;
-        }
-
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert(profileInsertData);
-          
-        if (profileError && profileError.message.includes('photo_url')) {
-          // Fallback: insert without photo_url
-          await supabase
-            .from('profiles')
-            .insert({
-              id: newId,
-              full_name: fullName,
-              phone: phone || null,
-              role: 'member'
-            });
-        } else if (profileError) {
-          throw profileError;
-        }
+          .update({
+            full_name: fullName,
+            phone: phone || null,
+            photo_url: finalPhotoUrl || null,
+          })
+          .eq('id', editingMemberId);
+        if (profileError) throw profileError;
 
         const { error: memberError } = await supabase
           .from('members')
-          .insert({
-            id: newId,
-            member_code: memberCode.trim() !== '' ? memberCode.trim() : undefined,
+          .update({
+            ...(memberCode.trim() !== '' && { member_code: memberCode.trim() }),
             join_date: joinDate,
-            category: category,
+            category,
+            status,
             initial_investment: category === 'C' ? 0 : Number(initialInvestment),
             chosen_term_months: category === 'B' ? 36 : Number(term),
-            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null)
-          });
-
+            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null),
+          })
+          .eq('id', editingMemberId);
         if (memberError) throw memberError;
+
+        setIsEditModalOpen(false);
+        setSuccessMessage('Member updated successfully.');
+      } else {
+        if (!initialPassword || initialPassword.length < 6) {
+          throw new Error('Initial password must be at least 6 characters. Share this with the member; they can change it later.');
+        }
+
+        const result = await callEdgeFunction<{ id: string; member_code: string; login_email: string }>(
+          'admin-create-member',
+          {
+            full_name: fullName,
+            phone: phone || null,
+            photo_url: finalPhotoUrl || null,
+            member_code: memberCode.trim() || null,
+            category,
+            initial_investment: category === 'C' ? 0 : Number(initialInvestment),
+            monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null),
+            chosen_term_months: category === 'B' ? 36 : Number(term),
+            join_date: joinDate,
+            password: initialPassword,
+          },
+        );
+
         setIsAddModalOpen(false);
-        setSuccessMessage('Member added successfully!');
+        setSuccessMessage(`Member ${result.member_code} created.`);
+        setLastCreatedCredentials({ code: result.member_code, password: initialPassword });
       }
 
-      fetchMembers(); // Refresh the list
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to save member.');
-      // Special hint for photo upload
-      if (err.message?.includes('photo_url')) {
-        setError('Database error: The "photo_url" column is missing in your profiles table. Please add it or contact support.');
-      }
+      fetchMembers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save member.');
     } finally {
       setFormLoading(false);
     }
@@ -324,64 +236,64 @@ export function Members() {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
 
-        if (data.length === 0) {
-          throw new Error("The uploaded file is empty.");
-        }
+        if (rows.length === 0) throw new Error('The uploaded file is empty.');
 
-        const profilesToInsert = [];
-        const membersToInsert = [];
+        let succeeded = 0;
+        const failures: string[] = [];
 
-        for (const row of data as any[]) {
-          const memberCode = row['MEMBER ID'] || row['Member ID'] || row['ID'] || '';
-          const name = row['NAME'] || row['Name'] || row['Full Name'] || 'Unknown';
+        for (const row of rows) {
+          const code = String(row['MEMBER ID'] || row['Member ID'] || row['ID'] || '').trim();
+          const name = String(row['NAME'] || row['Name'] || row['Full Name'] || 'Unknown');
           const installment = Number(row['INSTALMENT'] || row['INSTALLMENT'] || row['Installment'] || 100);
-          const phone = row['PHONE'] || row['Phone'] || null;
-          const category = row['CATEGORY'] || row['Category'] || 'C';
-          let joinDate = row['JOIN DATE'] || row['Join Date'];
+          const phoneStr = row['PHONE'] || row['Phone'] || null;
+          const cat = String(row['CATEGORY'] || row['Category'] || 'C').toUpperCase() as 'A' | 'B' | 'C';
+          const password = String(row['PASSWORD'] || row['Password'] || '').trim();
+          let joinDateVal = row['JOIN DATE'] || row['Join Date'];
 
-          // Basic date formatting fallback
-          if (!joinDate) {
-            joinDate = format(new Date(), 'yyyy-MM-dd');
-          } else if (typeof joinDate === 'number') {
-            // Excel serial date conversion
+          if (!joinDateVal) {
+            joinDateVal = format(new Date(), 'yyyy-MM-dd');
+          } else if (typeof joinDateVal === 'number') {
             const excelEpoch = new Date(1899, 11, 30);
-            const dateObj = new Date(excelEpoch.getTime() + joinDate * 86400000);
-            joinDate = format(dateObj, 'yyyy-MM-dd');
+            joinDateVal = format(new Date(excelEpoch.getTime() + joinDateVal * 86400000), 'yyyy-MM-dd');
           }
 
-          const newId = crypto.randomUUID();
-          profilesToInsert.push({
-            id: newId,
-            full_name: name,
-            phone: phone ? String(phone) : null,
-            role: 'member'
-          });
-          membersToInsert.push({
-            id: newId,
-            member_code: memberCode,
-            join_date: joinDate,
-            category: category,
-            initial_investment: category === 'C' ? 0 : 0,
-            chosen_term_months: 24,
-            monthly_installment: installment
-          });
+          if (!password || password.length < 6) {
+            failures.push(`${name}: missing PASSWORD column (min 6 chars)`);
+            continue;
+          }
+
+          try {
+            await callEdgeFunction('admin-create-member', {
+              full_name: name,
+              phone: phoneStr ? String(phoneStr) : null,
+              member_code: code || null,
+              category: cat,
+              initial_investment: 0,
+              monthly_installment: installment,
+              chosen_term_months: 24,
+              join_date: String(joinDateVal),
+              password,
+            });
+            succeeded += 1;
+          } catch (err) {
+            failures.push(`${name}: ${err instanceof Error ? err.message : 'unknown error'}`);
+          }
         }
 
-        const { error: profileError } = await supabase.from('profiles').insert(profilesToInsert);
-        if (profileError) throw profileError;
-
-        const { error: memberError } = await supabase.from('members').insert(membersToInsert);
-        if (memberError) throw memberError;
-
         await fetchMembers();
-        setImportMessage({ type: 'success', text: `Successfully imported ${data.length} members!` });
-      } catch (err: any) {
-        console.error(err);
-        setImportMessage({ type: 'error', text: 'Error importing: ' + err.message });
+        if (failures.length === 0) {
+          setImportMessage({ type: 'success', text: `Imported ${succeeded} members.` });
+        } else {
+          setImportMessage({
+            type: 'error',
+            text: `Imported ${succeeded}. Failed ${failures.length}: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? '…' : ''}`,
+          });
+        }
+      } catch (err) {
+        setImportMessage({ type: 'error', text: 'Error importing: ' + (err instanceof Error ? err.message : 'unknown') });
       } finally {
         setLoading(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -390,14 +302,12 @@ export function Members() {
     reader.readAsBinaryString(file);
   };
 
-  const filteredMembers = members.filter(member => {
-    const matchesSearch = 
+  const filteredMembers = members.filter((member) => {
+    const matchesSearch =
       (member.profiles?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (member.member_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (member.profiles?.phone || '').includes(searchQuery);
-    
     const matchesCategory = categoryFilter === 'All' || member.category === categoryFilter;
-    
     return matchesSearch && matchesCategory;
   });
 
@@ -406,12 +316,12 @@ export function Members() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Members Directory</h2>
         <div className="flex gap-3">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            accept=".xlsx, .xls, .csv" 
-            className="hidden" 
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".xlsx, .xls, .csv"
+            className="hidden"
           />
           <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2 border-[#1e5a48] text-[#1e5a48] hover:bg-[#1e5a48] hover:text-white">
             <i className="fas fa-file-excel"></i> Import Excel
@@ -436,15 +346,26 @@ export function Members() {
       {successMessage && (
         <div className="p-4 rounded-lg border bg-green-50 text-green-700 border-green-200">
           <div className="flex justify-between items-center">
-            <p>{successMessage}</p>
-            <button onClick={() => setSuccessMessage('')} className="text-current opacity-70 hover:opacity-100">
+            <div>
+              <p>{successMessage}</p>
+              {lastCreatedCredentials && (
+                <p className="mt-2 text-sm">
+                  <strong>Login credentials</strong> — share with the member, then dismiss:&nbsp;
+                  ID&nbsp;<code className="bg-white px-1 rounded">{lastCreatedCredentials.code}</code>&nbsp;|&nbsp;
+                  Password&nbsp;<code className="bg-white px-1 rounded">{lastCreatedCredentials.password}</code>
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => { setSuccessMessage(''); setLastCreatedCredentials(null); }}
+              className="text-current opacity-70 hover:opacity-100"
+            >
               <i className="fas fa-times"></i>
             </button>
           </div>
         </div>
       )}
 
-      {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex-1 relative">
           <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
@@ -470,7 +391,6 @@ export function Members() {
         </div>
       </div>
 
-      {/* Members Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -484,40 +404,29 @@ export function Members() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-gray-500">Loading members...</td>
-                </tr>
+                <tr><td colSpan={4} className="p-8 text-center text-gray-500">Loading members...</td></tr>
               ) : filteredMembers.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-gray-500">No members found matching your search.</td>
-                </tr>
+                <tr><td colSpan={4} className="p-8 text-center text-gray-500">No members found matching your search.</td></tr>
               ) : (
                 filteredMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/admin/members/${member.id}`)}>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10">
-                          {(() => {
-                            const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
-                            const photoUrl = profile?.photo_url;
-                            if (photoUrl) {
-                              return (
-                                <img 
-                                  src={photoUrl} 
-                                  alt={profile?.full_name || 'Member'} 
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                  loading="lazy"
-                                />
-                              );
-                            }
-                            return <i className="fas fa-user"></i>;
-                          })()}
+                          {member.profiles?.photo_url ? (
+                            <img
+                              src={member.profiles.photo_url}
+                              alt={member.profiles?.full_name || 'Member'}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <i className="fas fa-user"></i>
+                          )}
                         </div>
                         <div>
-                          <p className="font-bold text-gray-800">
-                            {Array.isArray(member.profiles) ? member.profiles[0]?.full_name : member.profiles?.full_name}
-                          </p>
+                          <p className="font-bold text-gray-800">{member.profiles?.full_name}</p>
                           <p className="text-xs font-mono text-[#1e5a48]">{member.member_code}</p>
                         </div>
                       </div>
@@ -555,7 +464,6 @@ export function Members() {
         </div>
       </div>
 
-      {/* Add/Edit Member Modal */}
       {(isAddModalOpen || isEditModalOpen) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
@@ -565,15 +473,14 @@ export function Members() {
                 <i className="fas fa-times text-xl"></i>
               </button>
             </div>
-            
             <div className="p-6 overflow-y-auto">
               {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{error}</div>}
-              
+
               <form onSubmit={handleSaveMember} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Member ID (Optional)</Label>
-                  <Input value={memberCode} onChange={(e) => setMemberCode(e.target.value)} placeholder="Leave blank to auto-generate (e.g. EUS/022026/C/045)" />
-                  <p className="text-xs text-gray-500">If you leave this blank, the system will automatically generate it based on the Join Date.</p>
+                  <Input value={memberCode} onChange={(e) => setMemberCode(e.target.value)} placeholder="Leave blank to auto-generate" />
+                  <p className="text-xs text-gray-500">If blank, the system auto-generates it based on Join Date.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -585,42 +492,44 @@ export function Members() {
                   <Label>Full Name</Label>
                   <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="e.g. Rahul Sharma" />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label>Mobile Number (Optional)</Label>
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} pattern="[0-9]{10}" placeholder="10 digit number" />
                 </div>
+
+                {!editingMemberId && (
+                  <div className="space-y-2">
+                    <Label>Initial Password</Label>
+                    <Input
+                      type="text"
+                      value={initialPassword}
+                      onChange={(e) => setInitialPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      placeholder="Min 6 chars — share with member"
+                    />
+                    <p className="text-xs text-gray-500">The member can change this themselves after first login.</p>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>Profile Picture</Label>
                   <div className="flex items-center gap-4 p-3 border rounded-lg bg-gray-50/50">
                     <div className="w-16 h-16 rounded-full bg-white border-2 border-[#1e5a48]/20 flex items-center justify-center overflow-hidden shadow-sm">
                       {(photoFile || photoUrl) ? (
-                        <img 
-                          src={photoFile ? URL.createObjectURL(photoFile) : photoUrl} 
-                          className="w-full h-full object-cover" 
-                          alt="Preview" 
-                        />
+                        <img src={photoFile ? URL.createObjectURL(photoFile) : photoUrl} className="w-full h-full object-cover" alt="Preview" />
                       ) : (
                         <i className="fas fa-user text-gray-300 text-2xl"></i>
                       )}
                     </div>
                     <div className="flex-1 space-y-2">
-                      <label className="block">
-                        <span className="sr-only">Choose profile photo</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-                          className="block w-full text-sm text-gray-500
-                            file:mr-4 file:py-2 file:px-4
-                            file:rounded-full file:border-0
-                            file:text-sm file:font-semibold
-                            file:bg-[#1e5a48] file:text-white
-                            hover:file:bg-[#154033]
-                            cursor-pointer"
-                        />
-                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#1e5a48] file:text-white hover:file:bg-[#154033] cursor-pointer"
+                      />
                       <p className="text-[10px] text-gray-400">JPG, PNG or WebP. Max 2MB.</p>
                     </div>
                   </div>
@@ -628,14 +537,14 @@ export function Members() {
 
                 <div className="space-y-2">
                   <Label>Category</Label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={category} 
-                    onChange={(e) => setCategory(e.target.value)}
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value as 'A' | 'B' | 'C')}
                   >
-                    <option value="C">Category C (Public - ₹100/mo)</option>
-                    <option value="B">Category B (Investor - One time)</option>
-                    <option value="A">Category A (Founder - ₹1000/mo)</option>
+                    <option value="C">Category C (Public — ₹100/mo)</option>
+                    <option value="B">Category B (Investor — One time)</option>
+                    <option value="A">Category A (Founder — ₹1000/mo)</option>
                   </select>
                 </div>
 
@@ -650,9 +559,9 @@ export function Members() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>Term Duration</Label>
-                      <select 
+                      <select
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        value={term} 
+                        value={term}
                         onChange={(e) => setTerm(e.target.value)}
                       >
                         <option value="24">24 Months (16% ROI)</option>
@@ -669,9 +578,9 @@ export function Members() {
                 {category === 'A' && (
                   <div className="space-y-2">
                     <Label>Term Duration</Label>
-                    <select 
+                    <select
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={term} 
+                      value={term}
                       onChange={(e) => setTerm(e.target.value)}
                     >
                       <option value="36">36 Months</option>
@@ -683,9 +592,9 @@ export function Members() {
                 {editingMemberId && (
                   <div className="space-y-2">
                     <Label>Status</Label>
-                    <select 
+                    <select
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={status} 
+                      value={status}
                       onChange={(e) => setStatus(e.target.value)}
                     >
                       <option value="active">Active</option>
@@ -697,7 +606,7 @@ export function Members() {
 
                 <div className="pt-4">
                   <Button type="submit" className="w-full" disabled={formLoading}>
-                    {formLoading ? 'Saving...' : (editingMemberId ? 'Update Member' : 'Create Member')}
+                    {formLoading ? 'Saving…' : (editingMemberId ? 'Update Member' : 'Create Member')}
                   </Button>
                 </div>
               </form>
@@ -705,7 +614,7 @@ export function Members() {
           </div>
         </div>
       )}
-      {/* Delete Confirmation Modal */}
+
       {memberToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
@@ -714,33 +623,21 @@ export function Members() {
               <h3 className="font-bold text-lg">Confirm Deletion</h3>
             </div>
             <div className="p-6">
-              <p className="text-gray-700 mb-4">Are you sure you want to delete this member? This action cannot be undone and will remove all associated data.</p>
-              
+              <p className="text-gray-700 mb-4">Delete this member? Their auth login and all associated savings, loans, and repayments will be permanently removed.</p>
               {deleteError && (
-                <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
-                  {deleteError}
-                </div>
+                <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{deleteError}</div>
               )}
-
               <div className="flex justify-end gap-3 mt-6">
-                <Button variant="outline" onClick={() => setMemberToDelete(null)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleDeleteMember} className="bg-red-600 hover:bg-red-700 text-white">
-                  Delete Member
-                </Button>
+                <Button variant="outline" onClick={() => setMemberToDelete(null)}>Cancel</Button>
+                <Button onClick={handleDeleteMember} className="bg-red-600 hover:bg-red-700 text-white">Delete Member</Button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Statement Modal */}
       {statementMemberId && (
-        <StatementModal 
-          memberId={statementMemberId} 
-          onClose={() => setStatementMemberId(null)} 
-        />
+        <StatementModal memberId={statementMemberId} onClose={() => setStatementMemberId(null)} />
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format } from 'date-fns';
+import { locale } from '../config/branding';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -14,9 +15,9 @@ export function safeFormatDate(dateInput: string | Date | null | undefined, form
 }
 
 export function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', {
+  return new Intl.NumberFormat(locale.currencyLocale, {
     style: 'currency',
-    currency: 'INR',
+    currency: locale.currency,
     maximumFractionDigits: 0,
   }).format(amount);
 }

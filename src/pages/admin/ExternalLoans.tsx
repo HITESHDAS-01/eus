@@ -454,7 +454,7 @@ ALTER TABLE ext_loan_txns DISABLE ROW LEVEL SECURITY;`}</pre>
             <div className="p-5 border-b flex justify-between items-center bg-[#1e5a48] text-white shrink-0">
               <h3 className="font-bold text-lg">Loan Ledger: {selectedLoan.borrower_name}</h3>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={handlePrint} className="bg-white/10 hover:bg-white/20 border-white/20 text-white">
+                <Button variant="outline" onClick={handlePrint} className="bg-white/10 hover:bg-white/20 border-white/20 text-white text-sm px-3 py-1.5">
                   <i className="fas fa-print mr-2"></i> Print PDF
                 </Button>
                 <button onClick={() => setIsLedgerModalOpen(false)} className="text-white/70 hover:text-white">

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { branding } from '../config/branding';
 
 export const translations = {
   en: {
@@ -11,7 +12,7 @@ export const translations = {
       logout: 'Logout',
     },
     header: {
-      orgName: 'Ekata Unnayan Sanstha',
+      orgName: branding.orgName,
       category: 'Category',
       profile: {
         title: 'Member Profile',
@@ -89,7 +90,7 @@ export const translations = {
       logout: 'লগআউট',
     },
     header: {
-      orgName: 'একতা উন্নয়ন সংস্থা',
+      orgName: branding.orgNameNative,
       category: 'শ্ৰেণী',
       profile: {
         title: 'সদস্যৰ প্ৰফাইল',

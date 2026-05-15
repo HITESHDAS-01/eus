@@ -1,197 +1,110 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { memberAuth } from '../config/branding';
 
 type UserRole = 'admin' | 'member' | null;
 
 interface AuthContextType {
-  user: any | null;
+  user: User | null;
   role: UserRole;
   memberId: string | null;
   loading: boolean;
-  loginAdmin: (email: string, password: string) => Promise<boolean>;
-  loginMember: (memberCode: string) => Promise<boolean>;
+  loginAdmin: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  loginMember: (memberCode: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function syntheticMemberEmail(memberCode: string): string {
+  const sanitized = memberCode.trim().replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase();
+  return `${sanitized}@${memberAuth.emailDomain}`;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<UserRole>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check local storage for mock session first
-    const mockSession = localStorage.getItem('mockSession');
-    if (mockSession) {
-      const data = JSON.parse(mockSession);
-      setUser({ id: data.id, phone: data.phone });
-      setRole(data.role);
-      setMemberId(data.memberId || null);
-      setLoading(false);
-      return;
-    }
+    let cancelled = false;
 
-    // Check Supabase session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchUserRole(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchUserRole(session.user.id);
-      } else {
+    const applySession = async (session: Session | null) => {
+      if (cancelled) return;
+      if (!session?.user) {
         setUser(null);
         setRole(null);
         setMemberId(null);
         setLoading(false);
+        return;
       }
+      setUser(session.user);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (cancelled) return;
+      const nextRole = (profile?.role as UserRole) ?? null;
+      setRole(nextRole);
+      setMemberId(nextRole === 'member' ? session.user.id : null);
+      setLoading(false);
+    };
+
+    supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-      
-      if (profile) {
-        setRole(profile.role as UserRole);
-        if (profile.role === 'member') {
-          const { data: member } = await supabase
-            .from('members')
-            .select('id')
-            .eq('id', userId)
-            .single();
-          if (member) setMemberId(member.id);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching role:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loginAdmin = async (email: string, password: string) => {
-    // Mock login for demo
-    if (email === 'admin@eus.com' && password === 'admin123') {
-      const mockData = { id: 'admin-1', email, role: 'admin' };
-      localStorage.setItem('mockSession', JSON.stringify(mockData));
-      setUser({ id: mockData.id, email });
-      setRole('admin');
-      return true;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return { ok: false, error: error?.message ?? 'Login failed' };
     }
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        // Automatically bootstrap admin for specific authorized emails ONLY
-        const ALLOWED_ADMINS = ['PranjitDas21@gmail.com', 'admin@eus.com', 'reachpranjit@gmail.com', 'hitesh.npk@gmail.com'];
-        if (error.message.includes('Invalid login credentials') && ALLOWED_ADMINS.includes(email)) {
-          console.log('Attempting to create an authorized admin account...');
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email,
-            password,
-          });
-          
-          if (!signUpError && signUpData.user) {
-            // Force the profile role to be admin for this new user
-            const { error: profileError } = await supabase
-              .from('profiles')
-              .upsert({ id: signUpData.user.id, role: 'admin', full_name: 'System Administrator' });
-              
-            if (!profileError) {
-              setUser(signUpData.user);
-              setRole('admin');
-              return true;
-            }
-          }
-        }
-        throw error;
-      }
-      
-      // Check if the user is actually an admin
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single();
-        
-      // For bootstrapping specific existing users, force role to admin if null
-      const ALLOWED_ADMINS = ['PranjitDas21@gmail.com', 'admin@eus.com', 'reachpranjit@gmail.com', 'hitesh.npk@gmail.com'];
-      if (!profile?.role && ALLOWED_ADMINS.includes(email)) {
-         await supabase.from('profiles').upsert({ id: data.user.id, role: 'admin', full_name: 'Administrator' });
-         setUser(data.user);
-         setRole('admin');
-         return true;
-      }
-        
-      if (profile?.role === 'admin') {
-        setUser(data.user);
-        setRole('admin');
-        return true;
-      } else {
-        // If not admin, sign out
-        await supabase.auth.signOut();
-        return false;
-      }
-    } catch (error) {
-      console.error('Admin login error:', error);
-      return false;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      await supabase.auth.signOut();
+      return { ok: false, error: 'This account does not have admin access.' };
     }
+    return { ok: true };
   };
 
-  const loginMember = async (memberCode: string) => {
-    try {
-      const { data: member, error } = await supabase
-        .from('members')
-        .select('id, member_code')
-        .eq('member_code', memberCode)
-        .single();
-
-      if (member) {
-        const mockData = { id: member.id, memberCode, role: 'member', memberId: member.id };
-        localStorage.setItem('mockSession', JSON.stringify(mockData));
-        setUser({ id: mockData.id, memberCode });
-        setRole('member');
-        setMemberId(member.id);
-        return true;
-      }
-    } catch (error) {
-      console.error('Member login error:', error);
+  const loginMember = async (memberCode: string, password: string) => {
+    const email = syntheticMemberEmail(memberCode);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return { ok: false, error: 'Invalid Member ID or password.' };
     }
 
-    // Fallback mock login for demo if no DB connection
-    if (memberCode.startsWith('EUS/')) {
-      const mockData = { id: 'member-1', memberCode, role: 'member', memberId: 'member-1' };
-      localStorage.setItem('mockSession', JSON.stringify(mockData));
-      setUser({ id: mockData.id, memberCode });
-      setRole('member');
-      setMemberId('member-1');
-      return true;
-    }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .single();
 
-    return false;
+    if (profile?.role !== 'member') {
+      await supabase.auth.signOut();
+      return { ok: false, error: 'This account is not a member account.' };
+    }
+    return { ok: true };
   };
 
   const logout = async () => {
-    localStorage.removeItem('mockSession');
     await supabase.auth.signOut();
     setUser(null);
     setRole(null);
