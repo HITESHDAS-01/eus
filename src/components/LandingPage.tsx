@@ -466,7 +466,7 @@ export function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
 
           <div className="flex flex-wrap justify-center gap-6 mt-6">
             {/* President */}
-            <motion.div variants={fadeInUp} className="bg-white rounded-[24px] p-6 text-center w-[220px] shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1">
+            <motion.div variants={fadeInUp} className="bg-white rounded-[24px] p-6 text-center w-full sm:w-[220px] shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1">
               <div className="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-4 border-[#eef5f0] bg-gray-100 flex items-center justify-center">
                 <img src="https://ui-avatars.com/api/?name=Gautam+Rajbongshi&background=eef5f0&color=1e5a48&size=150" alt="President" className="w-full h-full object-cover" />
               </div>
@@ -478,7 +478,7 @@ export function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
             </motion.div>
 
             {/* Secretary */}
-            <motion.div variants={fadeInUp} className="bg-white rounded-[24px] p-6 text-center w-[220px] shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1">
+            <motion.div variants={fadeInUp} className="bg-white rounded-[24px] p-6 text-center w-full sm:w-[220px] shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1">
               <div className="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-4 border-[#eef5f0] bg-gray-100 flex items-center justify-center">
                 <img src="https://ui-avatars.com/api/?name=Pranjit+Das&background=eef5f0&color=1e5a48&size=150" alt="Secretary" className="w-full h-full object-cover" />
               </div>
@@ -490,7 +490,7 @@ export function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
             </motion.div>
 
             {/* Treasurer */}
-            <motion.div variants={fadeInUp} className="bg-white rounded-[24px] p-6 text-center w-[220px] shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1">
+            <motion.div variants={fadeInUp} className="bg-white rounded-[24px] p-6 text-center w-full sm:w-[220px] shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1">
               <div className="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-4 border-[#eef5f0] bg-gray-100 flex items-center justify-center">
                 <img src="https://ui-avatars.com/api/?name=Ujjal+Talukdar&background=eef5f0&color=1e5a48&size=150" alt="Treasurer" className="w-full h-full object-cover" />
               </div>

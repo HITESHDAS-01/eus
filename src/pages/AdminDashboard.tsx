@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
+import { branding } from '../config/branding';
 import { AdminHome } from './AdminHome';
 import { Members } from './admin/Members';
 import { Transactions } from './admin/Transactions';
@@ -14,7 +15,21 @@ export function AdminDashboard() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Default closed on mobile (< 1024px), open on desktop. The user can
+  // still toggle, but they shouldn't open the app to a sidebar covering
+  // the whole phone screen.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth >= 1024;
+  });
+
+  // Auto-close the sidebar on route change on mobile so it doesn't linger
+  // over the new page.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -32,14 +47,25 @@ export function AdminDashboard() {
   ];
 
   return (
-    <div className="flex h-screen bg-[#f4f7f6] font-['Roboto',sans-serif]">
-      {/* Material Navigation Drawer */}
-      <div 
-        className={`${isSidebarOpen ? 'w-72' : 'w-0 lg:w-20'} transition-all duration-300 ease-in-out bg-[#0b3b2f] text-white flex flex-col shadow-2xl z-20 overflow-hidden lg:rounded-r-3xl`}
+    <div className="flex h-screen bg-[#f4f7f6] font-['Roboto',sans-serif] relative">
+      {/* Mobile backdrop: tap to close the sidebar */}
+      {isSidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-10"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Navigation drawer — overlay on mobile, push on desktop */}
+      <div
+        className={`fixed lg:static top-0 left-0 h-full z-20 transition-all duration-300 ease-in-out bg-[#0b3b2f] text-white flex flex-col shadow-2xl overflow-hidden lg:rounded-r-3xl ${
+          isSidebarOpen ? 'w-72' : 'w-0 lg:w-20'
+        }`}
       >
         <div className="h-16 flex items-center px-4 shrink-0">
           <Link to="/" className="flex items-center" title="Back to Site">
-            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-10 h-10 object-contain bg-white rounded-xl p-1 shadow-sm shrink-0 hover:ring-2 hover:ring-[#f7b05e] transition-all" referrerPolicy="no-referrer" />
+            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt={`${branding.orgShort} Logo`} className="w-10 h-10 object-contain bg-white rounded-xl p-1 shadow-sm shrink-0 hover:ring-2 hover:ring-[#f7b05e] transition-all" referrerPolicy="no-referrer" />
             <span className={`ml-3 font-bold text-lg tracking-wide whitespace-nowrap transition-opacity duration-300 hover:text-[#f7b05e] ${isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'}`}>
               Admin Panel
             </span>
@@ -104,7 +130,7 @@ export function AdminDashboard() {
             >
               <i className="fas fa-bars text-lg"></i>
             </button>
-            <h1 className="text-xl font-bold text-white tracking-tight hidden sm:block font-['Noto_Sans_Bengali',sans-serif]">একতা উন্নয়ন সংস্থা</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight hidden sm:block font-['Noto_Sans_Bengali',sans-serif]">{branding.orgNameNative}</h1>
           </div>
           
           <div className="flex items-center gap-4">

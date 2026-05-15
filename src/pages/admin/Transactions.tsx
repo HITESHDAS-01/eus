@@ -95,7 +95,10 @@ export function Transactions() {
 
       const monthYear = startOfMonth(payDate);
       const dueDate = setDate(monthYear, dueDay);
-      const receiptNumber = `RCPT-${format(new Date(), 'yyyyMMddHHmmss')}`;
+      // Random suffix prevents UNIQUE-constraint collisions when two admins
+      // record a payment in the same second.
+      const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+      const receiptNumber = `RCPT-${format(new Date(), 'yyyyMMddHHmmss')}-${suffix}`;
 
       const insertData: any = {
         member_id: selectedMemberId,

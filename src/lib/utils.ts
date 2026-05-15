@@ -22,18 +22,51 @@ export function formatCurrency(amount: number) {
   }).format(amount);
 }
 
+// ---------------------------------------------------------------------------
+// EUS maturity / payout rules
+// ---------------------------------------------------------------------------
+// Category A (founders): NO ROI — they receive exactly what they put in.
+//   This is by design — founders' return is via ownership/profit-share,
+//   not a per-deposit ROI.
+//
+// Category B (one-time investors): ROI applied to initial_investment.
+//
+// Category C (public): ROI applied to running savings total — but ONLY if
+//   the member reaches full maturity. Early-exit members forfeit ROI and
+//   receive only principal.
+//
+// `status` controls the early-exit gate:
+//   - 'active' or 'matured'  → ROI applies (if eligible)
+//   - 'inactive' / 'withdrawn' / 'closed' → principal only, no ROI
+// ---------------------------------------------------------------------------
+type MaturityCategory = 'A' | 'B' | 'C' | string;
+type MaturityStatus = 'active' | 'matured' | 'inactive' | 'withdrawn' | 'closed' | string;
+
 export function calculateMaturityAmount(
-  category: string,
+  category: MaturityCategory,
   initialInvestment: number,
   totalSavings: number,
-  roi: number
+  roi: number,
+  status: MaturityStatus = 'active',
 ) {
+  const earlyExit = status === 'inactive' || status === 'withdrawn' || status === 'closed';
+
   if (category === 'A') {
+    // Founders: no ROI ever, regardless of status.
     return totalSavings;
-  } else if (category === 'B') {
+  }
+
+  if (category === 'B') {
+    // Early-exit Cat B forfeits ROI, returns only the original deposit.
+    if (earlyExit) return initialInvestment;
     return initialInvestment * (1 + roi / 100);
-  } else if (category === 'C') {
+  }
+
+  if (category === 'C') {
+    // Early-exit Cat C forfeits ROI, returns only what they actually paid.
+    if (earlyExit) return totalSavings;
     return totalSavings * (1 + roi / 100);
   }
+
   return 0;
 }

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
-import { safeFormatDate } from '../../lib/utils';
+import { safeFormatDate, formatCurrency, calculateMaturityAmount } from '../../lib/utils';
 import { Button } from '../ui/basic';
-import html2pdf from 'html2pdf.js';
+import { branding } from '../../config/branding';
+// html2pdf.js is heavy (~700 KB). Loaded on demand inside handlePrint.
 
 interface StatementModalProps {
   memberId: string;
@@ -69,20 +70,27 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
     }
   }, [memberId]);
 
-  const handlePrint = () => {
+  const [printing, setPrinting] = useState(false);
+
+  const handlePrint = async () => {
     const element = document.getElementById('printable-statement');
     if (!element) return;
 
-    const opt = {
-      margin:       0.5,
-      filename:     `Account_Statement_${memberData?.member_code || 'Member'}.pdf`,
-      image:        { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' as const }
-    };
-
-    // Use html2pdf to generate and download the PDF
-    html2pdf().set(opt).from(element).save();
+    setPrinting(true);
+    try {
+      // Dynamic import keeps html2pdf out of the initial bundle.
+      const { default: html2pdf } = await import('html2pdf.js');
+      const opt = {
+        margin: 0.5,
+        filename: `Account_Statement_${memberData?.member_code || 'Member'}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const },
+      };
+      await html2pdf().set(opt).from(element).save();
+    } finally {
+      setPrinting(false);
+    }
   };
 
   if (loading) {
@@ -95,11 +103,31 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
 
   if (!memberData) return null;
 
-  const totalSavings = savings.reduce((sum, s) => sum + Number(s.amount), 0);
+  const totalInstallments = savings.reduce((sum, s) => sum + Number(s.amount), 0);
   const totalPenalty = savings.reduce((sum, s) => sum + Number(s.penalty), 0);
   const totalLoanDisbursed = loans.reduce((sum, l) => sum + Number(l.principal_amount), 0);
   const totalLoanRepaid = repayments.reduce((sum, r) => sum + Number(r.principal_portion), 0);
   const activeLoanBalance = totalLoanDisbursed - totalLoanRepaid;
+
+  // Build totalSavings per the same per-category rule used by MemberHome / Reports.
+  let totalSavings = 0;
+  if (memberData.category === 'A') totalSavings = Number(memberData.initial_investment || 0) + totalInstallments;
+  else if (memberData.category === 'B') totalSavings = Number(memberData.initial_investment || 0);
+  else if (memberData.category === 'C') totalSavings = totalInstallments;
+
+  // ROI derived from category + chosen term (mirrors MemberHome).
+  let roi = 0;
+  if (memberData.category === 'B') roi = 36;
+  else if (memberData.category === 'C' && memberData.chosen_term_months === 24) roi = 16;
+  else if (memberData.category === 'C' && memberData.chosen_term_months === 36) roi = 27;
+
+  const projectedMaturity = calculateMaturityAmount(
+    memberData.category,
+    Number(memberData.initial_investment || 0),
+    totalSavings,
+    roi,
+    memberData.status,
+  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 print:p-0 print:bg-white overflow-y-auto">
@@ -109,8 +137,9 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
         <div className="flex justify-between items-center p-6 border-b print:hidden sticky top-0 bg-white rounded-t-2xl z-10">
           <h2 className="text-xl font-bold text-gray-800">Account Statement</h2>
           <div className="flex gap-3">
-            <Button onClick={handlePrint} className="bg-[#1e5a48] hover:bg-[#154033] text-white gap-2">
-              <i className="fas fa-download"></i> Download PDF
+            <Button onClick={handlePrint} disabled={printing} className="bg-[#1e5a48] hover:bg-[#154033] text-white gap-2 disabled:opacity-60">
+              <i className={`fas ${printing ? 'fa-spinner fa-spin' : 'fa-download'}`}></i>
+              {printing ? 'Generating…' : 'Download PDF'}
             </Button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
               <i className="fas fa-times text-xl"></i>
@@ -124,11 +153,11 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
           {/* Statement Header */}
           <div className="flex justify-between items-start mb-8 border-b pb-6" style={{ borderColor: '#e5e7eb' }}>
             <div className="text-left">
-              <h1 className="text-3xl font-bold tracking-wider mb-1" style={{ color: '#111827' }}>একতা উন্নয়ন সংস্থা</h1>
+              <h1 className="text-3xl font-bold tracking-wider mb-1" style={{ color: '#111827' }}>{branding.orgNameNative}</h1>
               <p className="text-sm font-medium" style={{ color: '#6b7280' }}>Member Account Statement</p>
               <p className="text-xs mt-2" style={{ color: '#9ca3af' }}>Generated on: {format(new Date(), 'dd MMM yyyy, hh:mm a')}</p>
             </div>
-            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt="EUS Logo" className="w-28 h-28 object-contain" referrerPolicy="no-referrer" />
+            <img src="https://i.ibb.co/xKRYj0f4/euslogo.png" alt={`${branding.orgShort} Logo`} className="w-28 h-28 object-contain" referrerPolicy="no-referrer" />
           </div>
 
           {/* Member Details */}
@@ -173,18 +202,25 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div className="border rounded-lg p-4 text-center" style={{ borderColor: '#e5e7eb' }}>
               <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6b7280' }}>Total Savings</p>
-              <p className="text-xl font-bold" style={{ color: '#16a34a' }}>₹{totalSavings.toLocaleString()}</p>
+              <p className="text-xl font-bold" style={{ color: '#16a34a' }}>{formatCurrency(totalSavings)}</p>
+            </div>
+            <div className="border rounded-lg p-4 text-center" style={{ borderColor: '#e5e7eb' }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6b7280' }}>Projected Maturity</p>
+              <p className="text-xl font-bold" style={{ color: '#1e5a48' }}>{formatCurrency(projectedMaturity)}</p>
+              <p className="text-[10px] mt-1" style={{ color: '#9ca3af' }}>
+                {memberData.category === 'A' ? 'Founder: principal only' : roi > 0 ? `${roi}% at full maturity` : 'No ROI for this term'}
+              </p>
             </div>
             <div className="border rounded-lg p-4 text-center" style={{ borderColor: '#e5e7eb' }}>
               <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6b7280' }}>Active Loan Balance</p>
-              <p className="text-xl font-bold" style={{ color: '#ea580c' }}>₹{activeLoanBalance.toLocaleString()}</p>
+              <p className="text-xl font-bold" style={{ color: '#ea580c' }}>{formatCurrency(activeLoanBalance)}</p>
             </div>
             <div className="border rounded-lg p-4 text-center" style={{ borderColor: '#e5e7eb' }}>
               <p className="text-xs uppercase tracking-wider mb-1" style={{ color: '#6b7280' }}>Total Penalty Paid</p>
-              <p className="text-xl font-bold" style={{ color: '#dc2626' }}>₹{totalPenalty.toLocaleString()}</p>
+              <p className="text-xl font-bold" style={{ color: '#dc2626' }}>{formatCurrency(totalPenalty)}</p>
             </div>
           </div>
 
@@ -199,8 +235,8 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
                   <tr className="border-b" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
                     <th className="p-3 font-semibold" style={{ color: '#4b5563' }}>Date</th>
                     <th className="p-3 font-semibold" style={{ color: '#4b5563' }}>Receipt No.</th>
-                    <th className="p-3 font-semibold text-right" style={{ color: '#4b5563' }}>Amount (₹)</th>
-                    <th className="p-3 font-semibold text-right" style={{ color: '#4b5563' }}>Penalty (₹)</th>
+                    <th className="p-3 font-semibold text-right" style={{ color: '#4b5563' }}>Amount</th>
+                    <th className="p-3 font-semibold text-right" style={{ color: '#4b5563' }}>Penalty</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y" style={{ borderColor: '#e5e7eb' }}>
@@ -208,8 +244,8 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
                     <tr key={tx.id}>
                       <td className="p-3" style={{ color: '#111827' }}>{safeFormatDate(tx.payment_date)}</td>
                       <td className="p-3 font-mono text-xs" style={{ color: '#111827' }}>{tx.receipt_number}</td>
-                      <td className="p-3 text-right font-medium" style={{ color: '#16a34a' }}>{Number(tx.amount).toLocaleString()}</td>
-                      <td className="p-3 text-right" style={{ color: '#ef4444' }}>{Number(tx.penalty) > 0 ? Number(tx.penalty).toLocaleString() : '-'}</td>
+                      <td className="p-3 text-right font-medium" style={{ color: '#16a34a' }}>{formatCurrency(Number(tx.amount))}</td>
+                      <td className="p-3 text-right" style={{ color: '#ef4444' }}>{Number(tx.penalty) > 0 ? formatCurrency(Number(tx.penalty)) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -230,12 +266,12 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
                     <div key={loan.id} className="border rounded-lg overflow-hidden page-break-inside-avoid" style={{ borderColor: '#e5e7eb' }}>
                       <div className="p-4 border-b flex justify-between items-center" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
                         <div>
-                          <p className="font-bold" style={{ color: '#1f2937' }}>Loan Disbursed: ₹{Number(loan.principal_amount).toLocaleString()}</p>
-                          <p className="text-xs" style={{ color: '#6b7280' }}>Date: {safeFormatDate(loan.disbursed_date)} | Interest: {loan.interest_rate}% | Status: <span className="uppercase">{loan.status}</span></p>
+                          <p className="font-bold" style={{ color: '#1f2937' }}>Loan Disbursed: {formatCurrency(Number(loan.principal_amount))}</p>
+                          <p className="text-xs" style={{ color: '#6b7280' }}>Date: {safeFormatDate(loan.disbursed_date)} | Interest: {loan.interest_rate}% / month | Status: <span className="uppercase">{loan.status}</span></p>
                         </div>
                         <div className="text-right">
                           <p className="text-xs mb-1" style={{ color: '#6b7280' }}>Remaining Principal</p>
-                          <p className="font-bold" style={{ color: '#ea580c' }}>₹{Number(loan.remaining_principal).toLocaleString()}</p>
+                          <p className="font-bold" style={{ color: '#ea580c' }}>{formatCurrency(Number(loan.remaining_principal))}</p>
                         </div>
                       </div>
                       
@@ -245,9 +281,9 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
                             <tr className="border-b" style={{ borderColor: '#e5e7eb' }}>
                               <th className="p-3 font-semibold bg-white" style={{ color: '#4b5563' }}>Repayment Date</th>
                               <th className="p-3 font-semibold bg-white" style={{ color: '#4b5563' }}>Receipt No.</th>
-                              <th className="p-3 font-semibold bg-white text-right" style={{ color: '#4b5563' }}>Principal (₹)</th>
-                              <th className="p-3 font-semibold bg-white text-right" style={{ color: '#4b5563' }}>Interest (₹)</th>
-                              <th className="p-3 font-semibold bg-white text-right" style={{ color: '#4b5563' }}>Total Paid (₹)</th>
+                              <th className="p-3 font-semibold bg-white text-right" style={{ color: '#4b5563' }}>Principal</th>
+                              <th className="p-3 font-semibold bg-white text-right" style={{ color: '#4b5563' }}>Interest</th>
+                              <th className="p-3 font-semibold bg-white text-right" style={{ color: '#4b5563' }}>Total Paid</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y" style={{ borderColor: '#e5e7eb' }}>
@@ -255,9 +291,9 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
                               <tr key={rep.id}>
                                 <td className="p-3" style={{ color: '#111827' }}>{safeFormatDate(rep.payment_date)}</td>
                                 <td className="p-3 font-mono text-xs" style={{ color: '#111827' }}>{rep.receipt_number}</td>
-                                <td className="p-3 text-right" style={{ color: '#1f2937' }}>{Number(rep.principal_portion).toLocaleString()}</td>
-                                <td className="p-3 text-right" style={{ color: '#1f2937' }}>{Number(rep.interest_portion).toLocaleString()}</td>
-                                <td className="p-3 text-right font-medium" style={{ color: '#16a34a' }}>{Number(rep.amount_paid).toLocaleString()}</td>
+                                <td className="p-3 text-right" style={{ color: '#1f2937' }}>{formatCurrency(Number(rep.principal_portion))}</td>
+                                <td className="p-3 text-right" style={{ color: '#1f2937' }}>{formatCurrency(Number(rep.interest_portion))}</td>
+                                <td className="p-3 text-right font-medium" style={{ color: '#16a34a' }}>{formatCurrency(Number(rep.amount_paid))}</td>
                               </tr>
                             ))}
                           </tbody>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency, safeFormatDate } from '../../lib/utils';
-import { format, differenceInMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, differenceInMonths, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { Input, Label } from '../../components/ui/basic';
+import { calculateMaturityAmount } from '../../lib/utils';
 
 export function Reports() {
   const [activeTab, setActiveTab] = useState<'maturity' | 'collection' | 'defaulter' | 'interest' | 'monthly_sheet'>('maturity');
@@ -42,7 +43,6 @@ export function Reports() {
         .eq('status', 'active');
       
       if (membersData) {
-        // Calculate maturity for each
         const processed = membersData.map(m => {
           const totalInstallments = m.savings_installments?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) || 0;
           let totalSavings = 0;
@@ -50,17 +50,24 @@ export function Reports() {
           else if (m.category === 'B') totalSavings = Number(m.initial_investment);
           else if (m.category === 'C') totalSavings = totalInstallments;
 
-          // Calculate ROI based on category and term
           let roi = 0;
           if (m.category === 'B') roi = 36;
           else if (m.category === 'C' && m.chosen_term_months === 24) roi = 16;
           else if (m.category === 'C' && m.chosen_term_months === 36) roi = 27;
 
-          const projectedAmount = totalSavings * (1 + roi / 100);
-          
+          const projectedAmount = calculateMaturityAmount(
+            m.category,
+            Number(m.initial_investment) || 0,
+            totalSavings,
+            roi,
+            m.status,
+          );
+
           const joinDate = m.join_date ? new Date(m.join_date) : new Date();
           const safeJoinDate = isNaN(joinDate.getTime()) ? new Date() : joinDate;
-          const maturityDate = new Date(safeJoinDate.setMonth(safeJoinDate.getMonth() + (m.chosen_term_months || 36)));
+          // addMonths returns a new Date — does NOT mutate safeJoinDate (unlike
+          // .setMonth(), which was a footgun in the old code).
+          const maturityDate = addMonths(safeJoinDate, m.chosen_term_months || 36);
           const monthsRemaining = differenceInMonths(maturityDate, new Date());
 
           let maturityStatus = 'Not Matured';
@@ -73,7 +80,7 @@ export function Reports() {
             projectedAmount,
             maturityDate,
             monthsRemaining,
-            maturityStatus
+            maturityStatus,
           };
         });
 

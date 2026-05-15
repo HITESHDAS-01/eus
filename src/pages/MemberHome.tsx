@@ -118,10 +118,14 @@ export function MemberHome() {
     memberData.category,
     Number(memberData.initial_investment),
     memberData.totalSavings,
-    memberData.roi
+    memberData.roi,
+    memberData.status,
   );
 
-  const loanEligibility = memberData.totalSavings * (settings.loanEligibilityPct / 100);
+  // Eligibility = 80% of (savings − any active loan balance).
+  // Existing loan reduces the collateral available for a new one.
+  const netCollateral = Math.max(0, memberData.totalSavings - (memberData.activeLoan || 0));
+  const loanEligibility = netCollateral * (settings.loanEligibilityPct / 100);
 
   return (
     <div className="space-y-6">

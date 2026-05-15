@@ -12,8 +12,18 @@ export function MemberDashboard() {
   const { logout, memberId } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth >= 1024;
+  });
   const [memberProfile, setMemberProfile] = useState<any>(null);
+
+  // Auto-close sidebar on route change on mobile.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  }, [location.pathname]);
   const [lang, setLang] = useState<'as' | 'en'>('as');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
@@ -62,10 +72,21 @@ export function MemberDashboard() {
   ];
 
   return (
-    <div className="flex h-screen bg-[#f4f7f6] font-['Roboto',sans-serif]">
-      {/* Material Navigation Drawer */}
-      <div 
-        className={`${isSidebarOpen ? 'w-72' : 'w-0 lg:w-20'} transition-all duration-300 ease-in-out bg-[#0b3b2f] text-white flex flex-col shadow-2xl z-20 overflow-hidden lg:rounded-r-3xl`}
+    <div className="flex h-screen bg-[#f4f7f6] font-['Roboto',sans-serif] relative">
+      {/* Mobile backdrop: tap to close the sidebar */}
+      {isSidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-10"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Navigation drawer — overlay on mobile, push on desktop */}
+      <div
+        className={`fixed lg:static top-0 left-0 h-full z-20 transition-all duration-300 ease-in-out bg-[#0b3b2f] text-white flex flex-col shadow-2xl overflow-hidden lg:rounded-r-3xl ${
+          isSidebarOpen ? 'w-72' : 'w-0 lg:w-20'
+        }`}
       >
         <div className="h-16 flex items-center px-4 shrink-0">
           <Link to="/" className="flex items-center" title={t.sidebar.backToSite}>

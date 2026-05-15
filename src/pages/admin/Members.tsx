@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
 import { format } from 'date-fns';
-import * as XLSX from 'xlsx';
 import StatementModal from '../../components/admin/StatementModal';
+import { MemberImportModal } from '../../components/admin/MemberImportModal';
 
 type MemberRow = {
   id: string;
@@ -48,8 +48,7 @@ export function Members() {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  const [importMessage, setImportMessage] = useState({ type: '', text: '' });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -224,84 +223,6 @@ export function Members() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setLoading(true);
-    setImportMessage({ type: '', text: '' });
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
-
-        if (rows.length === 0) throw new Error('The uploaded file is empty.');
-
-        let succeeded = 0;
-        const failures: string[] = [];
-
-        for (const row of rows) {
-          const code = String(row['MEMBER ID'] || row['Member ID'] || row['ID'] || '').trim();
-          const name = String(row['NAME'] || row['Name'] || row['Full Name'] || 'Unknown');
-          const installment = Number(row['INSTALMENT'] || row['INSTALLMENT'] || row['Installment'] || 100);
-          const phoneStr = row['PHONE'] || row['Phone'] || null;
-          const cat = String(row['CATEGORY'] || row['Category'] || 'C').toUpperCase() as 'A' | 'B' | 'C';
-          const password = String(row['PASSWORD'] || row['Password'] || '').trim();
-          let joinDateVal = row['JOIN DATE'] || row['Join Date'];
-
-          if (!joinDateVal) {
-            joinDateVal = format(new Date(), 'yyyy-MM-dd');
-          } else if (typeof joinDateVal === 'number') {
-            const excelEpoch = new Date(1899, 11, 30);
-            joinDateVal = format(new Date(excelEpoch.getTime() + joinDateVal * 86400000), 'yyyy-MM-dd');
-          }
-
-          if (!password || password.length < 6) {
-            failures.push(`${name}: missing PASSWORD column (min 6 chars)`);
-            continue;
-          }
-
-          try {
-            await callEdgeFunction('admin-create-member', {
-              full_name: name,
-              phone: phoneStr ? String(phoneStr) : null,
-              member_code: code || null,
-              category: cat,
-              initial_investment: 0,
-              monthly_installment: installment,
-              chosen_term_months: 24,
-              join_date: String(joinDateVal),
-              password,
-            });
-            succeeded += 1;
-          } catch (err) {
-            failures.push(`${name}: ${err instanceof Error ? err.message : 'unknown error'}`);
-          }
-        }
-
-        await fetchMembers();
-        if (failures.length === 0) {
-          setImportMessage({ type: 'success', text: `Imported ${succeeded} members.` });
-        } else {
-          setImportMessage({
-            type: 'error',
-            text: `Imported ${succeeded}. Failed ${failures.length}: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? '…' : ''}`,
-          });
-        }
-      } catch (err) {
-        setImportMessage({ type: 'error', text: 'Error importing: ' + (err instanceof Error ? err.message : 'unknown') });
-      } finally {
-        setLoading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
-
   const filteredMembers = members.filter((member) => {
     const matchesSearch =
       (member.profiles?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -313,17 +234,10 @@ export function Members() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <h2 className="text-2xl font-bold text-gray-800">Members Directory</h2>
-        <div className="flex gap-3">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept=".xlsx, .xls, .csv"
-            className="hidden"
-          />
-          <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2 border-[#1e5a48] text-[#1e5a48] hover:bg-[#1e5a48] hover:text-white">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button onClick={() => setIsImportModalOpen(true)} variant="outline" className="gap-2 border-[#1e5a48] text-[#1e5a48] hover:bg-[#1e5a48] hover:text-white">
             <i className="fas fa-file-excel"></i> Import Excel
           </Button>
           <Button onClick={openAddModal} className="gap-2">
@@ -331,17 +245,6 @@ export function Members() {
           </Button>
         </div>
       </div>
-
-      {importMessage.text && (
-        <div className={`p-4 rounded-lg border ${importMessage.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-          <div className="flex justify-between items-center">
-            <p>{importMessage.text}</p>
-            <button onClick={() => setImportMessage({ type: '', text: '' })} className="text-current opacity-70 hover:opacity-100">
-              <i className="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-      )}
 
       {successMessage && (
         <div className="p-4 rounded-lg border bg-green-50 text-green-700 border-green-200">
@@ -639,6 +542,12 @@ export function Members() {
       {statementMemberId && (
         <StatementModal memberId={statementMemberId} onClose={() => setStatementMemberId(null)} />
       )}
+
+      <MemberImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportComplete={fetchMembers}
+      />
     </div>
   );
 }

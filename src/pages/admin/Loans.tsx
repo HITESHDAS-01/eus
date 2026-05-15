@@ -36,7 +36,25 @@ export function Loans() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch members with their total savings for eligibility calculation
+      // Need active loans first so we can subtract their balances from
+      // each member's eligibility (an existing loan reduces collateral).
+      const { data: loansData } = await supabase
+        .from('loans')
+        .select(`
+          *,
+          members(member_code, profiles(full_name, photo_url))
+        `)
+        .eq('status', 'active');
+      const loans = loansData ?? [];
+      if (loansData) setActiveLoans(loansData);
+
+      // Map: member_id → sum of their active loan principals.
+      const outstandingByMember = new Map<string, number>();
+      for (const l of loans) {
+        const prev = outstandingByMember.get(l.member_id) ?? 0;
+        outstandingByMember.set(l.member_id, prev + Number(l.remaining_principal || 0));
+      }
+
       const { data: membersData } = await supabase
         .from('members')
         .select(`
@@ -45,31 +63,29 @@ export function Loans() {
           savings_installments(amount)
         `)
         .eq('status', 'active');
-      
+
       if (membersData) {
-        // Calculate eligibility for each member
-        const processedMembers = membersData.map(m => {
+        const processedMembers = membersData.map((m) => {
           const totalInstallments = m.savings_installments?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) || 0;
           let totalSavingsForEligibility = 0;
           if (m.category === 'A') totalSavingsForEligibility = Number(m.initial_investment) + totalInstallments;
           else if (m.category === 'B') totalSavingsForEligibility = Number(m.initial_investment);
           else if (m.category === 'C') totalSavingsForEligibility = totalInstallments;
-          
-          return { ...m, maxLoan: totalSavingsForEligibility * 0.8 }; // 80% eligibility
+
+          // Net collateral = savings − outstanding loan principal.
+          // 80% of *net* collateral is the new eligibility ceiling.
+          const outstanding = outstandingByMember.get(m.id) ?? 0;
+          const netSavings = Math.max(0, totalSavingsForEligibility - outstanding);
+
+          return {
+            ...m,
+            totalSavings: totalSavingsForEligibility,
+            outstandingLoan: outstanding,
+            maxLoan: netSavings * 0.8,
+          };
         });
         setMembers(processedMembers);
       }
-
-      // Fetch active loans
-      const { data: loansData } = await supabase
-        .from('loans')
-        .select(`
-          *,
-          members(member_code, profiles(full_name, photo_url))
-        `)
-        .eq('status', 'active');
-      if (loansData) setActiveLoans(loansData);
-
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
@@ -113,7 +129,8 @@ export function Loans() {
     try {
       const member = members.find(m => m.id === selectedMemberId);
       if (!member) throw new Error('Select a member');
-      if (Number(disburseAmount) > eligibility) throw new Error('Amount exceeds 80% eligibility limit');
+      if (Number(disburseAmount) <= 0) throw new Error('Loan amount must be greater than 0');
+      if (Number(disburseAmount) > eligibility) throw new Error(`Amount exceeds 80% eligibility limit (max ${formatCurrency(eligibility)} after subtracting any existing loan)`);
 
       const insertData: any = {
         member_id: selectedMemberId,
@@ -154,12 +171,20 @@ export function Loans() {
       const principalPortion = Number(repayPrincipal);
       const interestPortion = Number(repayInterest);
       const amountPaid = principalPortion + interestPortion;
+      const outstanding = Number(loan.remaining_principal);
 
       if (amountPaid <= 0) throw new Error('Total payment must be greater than 0');
+      if (principalPortion < 0 || interestPortion < 0) throw new Error('Amounts cannot be negative');
+      if (principalPortion > outstanding) {
+        throw new Error(`Principal repayment (${formatCurrency(principalPortion)}) cannot exceed outstanding balance (${formatCurrency(outstanding)}).`);
+      }
 
-      const newRemaining = Number(loan.remaining_principal) - principalPortion;
+      const newRemaining = outstanding - principalPortion;
       const newStatus = newRemaining <= 0 ? 'closed' : 'active';
-      const receiptNumber = `LREP-${format(new Date(), 'yyyyMMddHHmmss')}`;
+      // Receipt suffix adds a random 4-char block so two admins clicking in
+      // the same second don't get UNIQUE-constraint collisions.
+      const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+      const receiptNumber = `LREP-${format(new Date(), 'yyyyMMddHHmmss')}-${suffix}`;
 
       // 1. Insert Repayment
       const repInsertData: any = {
@@ -242,12 +267,29 @@ export function Loans() {
               </select>
             </div>
 
-            {selectedMemberId && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex justify-between items-center">
-                <span className="text-sm text-blue-800 font-medium">Max Eligibility (80% of savings):</span>
-                <span className="text-lg font-bold text-blue-900">{formatCurrency(eligibility)}</span>
-              </div>
-            )}
+            {selectedMemberId && (() => {
+              const sel = members.find((m) => m.id === selectedMemberId);
+              const totalSav = sel?.totalSavings ?? 0;
+              const outstanding = sel?.outstandingLoan ?? 0;
+              return (
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-1">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-blue-800">Total savings (collateral):</span>
+                    <span className="text-blue-900 font-medium">{formatCurrency(totalSav)}</span>
+                  </div>
+                  {outstanding > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-blue-800">Less: existing loan balance:</span>
+                      <span className="text-red-700 font-medium">− {formatCurrency(outstanding)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-blue-200">
+                    <span className="text-sm text-blue-800 font-medium">Max new loan (80% of net):</span>
+                    <span className="text-lg font-bold text-blue-900">{formatCurrency(eligibility)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -257,6 +299,7 @@ export function Loans() {
               <div className="space-y-2">
                 <Label>Interest Rate (% per month)</Label>
                 <Input type="number" step="0.1" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} required min="0" />
+                <p className="text-xs text-gray-500">All loan interest is charged monthly on the outstanding principal.</p>
               </div>
             </div>
             

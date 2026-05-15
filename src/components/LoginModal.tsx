@@ -93,7 +93,7 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.2 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-[450px] overflow-hidden"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] sm:max-w-[450px] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="bg-[#1e5a48] p-6 text-center relative border-b border-[#1a4d3c]">

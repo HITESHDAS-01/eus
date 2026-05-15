@@ -3,7 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../../components/ui/basic';
 import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format, addMonths, isBefore, isAfter } from 'date-fns';
-import * as XLSX from 'xlsx';
+// xlsx is heavy (~600 KB). It's loaded on demand inside exportToExcel
+// instead of at the top of the file so it doesn't bloat the initial bundle.
 
 import { ExternalLoans } from './ExternalLoans';
 
@@ -190,7 +191,8 @@ export function Investments() {
     setIsAddModalOpen(true);
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const XLSX = await import('xlsx');
     const exportData = investments.map(inv => {
       const totalReturns = inv.investment_returns?.reduce((sum: number, r: any) => sum + Number(r.amount), 0) || 0;
       return {
