@@ -144,13 +144,41 @@ serve(async (req) => {
   const email = syntheticEmail(codeForEmail);
 
   // 1. Create auth user (service role, no email confirmation needed).
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+  let { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password: body.password,
     email_confirm: true,
     user_metadata: { full_name: body.full_name, member_code: codeForEmail },
   });
-  if (createErr || !created.user) {
+
+  // If the email is already taken (orphaned auth user from a previous delete),
+  // find and remove the orphan, then retry the create.
+  if (createErr && (createErr.message?.toLowerCase().includes('already') || createErr.message?.toLowerCase().includes('registered'))) {
+    try {
+      const listRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
+        headers: { 'Authorization': `Bearer ${SERVICE_ROLE_KEY}`, 'apikey': SERVICE_ROLE_KEY },
+      });
+      const listData = await listRes.json();
+      const orphan = (listData.users ?? []).find((u: { email: string; id: string }) => u.email === email);
+      if (orphan) {
+        // Delete any leftover profile row (member row is already gone from our delete flow).
+        await admin.from('profiles').delete().eq('id', orphan.id);
+        await admin.auth.admin.deleteUser(orphan.id);
+      }
+    } catch (_) { /* ignore cleanup errors — retry will surface real issues */ }
+
+    // Retry
+    const retry = await admin.auth.admin.createUser({
+      email,
+      password: body.password,
+      email_confirm: true,
+      user_metadata: { full_name: body.full_name, member_code: codeForEmail },
+    });
+    created = retry.data;
+    createErr = retry.error;
+  }
+
+  if (createErr || !created?.user) {
     return new Response(JSON.stringify({ error: createErr?.message ?? 'createUser failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
