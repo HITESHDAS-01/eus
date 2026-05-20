@@ -129,8 +129,20 @@ export function Members() {
   const handleDeleteMember = async () => {
     if (!memberToDelete) return;
     try {
-      // Edge function deletes auth.users; profiles/members cascade via FK.
-      await callEdgeFunction('admin-delete-member', { member_id: memberToDelete });
+      // Delete from members first (savings/loans/repayments cascade from members FK)
+      const { error: memberErr } = await supabase
+        .from('members')
+        .delete()
+        .eq('id', memberToDelete);
+      if (memberErr) throw memberErr;
+
+      // Then delete the profile row (auth.users orphan is harmless — they can't log in without a profile)
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', memberToDelete);
+      if (profileErr) throw profileErr;
+
       setMemberToDelete(null);
       fetchMembers();
     } catch (err) {
