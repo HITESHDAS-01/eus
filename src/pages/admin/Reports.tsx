@@ -167,6 +167,11 @@ export function Reports() {
   const fetchMonthlySheetData = async () => {
     setLoading(true);
     try {
+      // Read due day from settings so it stays in sync with Transactions page.
+      const { data: settingsRows } = await supabase.from('settings').select('key, value');
+      const settingsMap = Object.fromEntries((settingsRows || []).map((s: any) => [s.key, Number(s.value)]));
+      const dueDay = settingsMap['monthly_due_day'] ?? 10;
+
       // Get all active members
       const { data: activeMembers } = await supabase
         .from('members')
@@ -177,12 +182,12 @@ export function Reports() {
       // Get installments in the current month
       const currentMonthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
       const currentMonthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
-      
+
       const { data: installments } = await supabase
         .from('savings_installments')
         .select('member_id, amount, payment_date')
-        .gte('payment_date', currentMonthStart)
-        .lte('payment_date', currentMonthEnd);
+        .gte('month_year', currentMonthStart)
+        .lte('month_year', currentMonthEnd);
 
       if (activeMembers && installments) {
         const paidMembers = new Map();
@@ -191,7 +196,7 @@ export function Reports() {
         });
 
         const today = new Date();
-        const isLate = today.getDate() > 15;
+        const isLate = today.getDate() > dueDay;
 
         const sheetData = activeMembers.map(m => {
           if (m.category === 'B') {
