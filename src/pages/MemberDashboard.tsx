@@ -213,7 +213,7 @@ export function MemberDashboard() {
             </div>
             <div className="p-6">
               <div className="flex flex-col items-center mb-6">
-                <div className="w-24 h-24 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md border-4 border-white -mt-12 overflow-hidden bg-white mb-3 text-4xl">
+                <div className="w-24 h-24 bg-[#1a5f4a] rounded-full flex items-center justify-center text-[#f7b05e] shadow-md border-4 border-white -mt-12 overflow-hidden mb-3 text-4xl">
                   {(() => {
                     const profile = Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0] : memberProfile?.profiles;
                     if (profile?.photo_url) {
@@ -245,7 +245,7 @@ export function MemberDashboard() {
                 </div>
                 <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                   <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-piggy-bank w-4"></i> {t.header.profile.savingAmt}</span>
-                  <span className="font-semibold text-[#1a5f4a]">{formatCurrency(memberProfile?.monthly_saving_amount || 0)}</span>
+                  <span className="font-semibold text-[#1a5f4a]">{formatCurrency(memberProfile?.monthly_installment || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-phone w-4"></i> {t.header.profile.phone}</span>

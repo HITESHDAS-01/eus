@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { formatCurrency, calculateMaturityAmount, safeFormatDate } from '../lib/utils';
 import { format, differenceInMonths, addMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
@@ -229,7 +230,7 @@ export function MemberHome() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
           <h3 className="text-lg font-bold text-gray-800">{t.home.recentTransactions}</h3>
-          <button className="text-[#1e5a48] text-sm font-medium hover:underline">{t.home.viewAll}</button>
+          <Link to="/member/transactions" className="text-[#1e5a48] text-sm font-medium hover:underline">{t.home.viewAll}</Link>
         </div>
         <div className="p-0 overflow-x-auto">
           <table className="w-full text-left border-collapse whitespace-nowrap">
