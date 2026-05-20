@@ -249,7 +249,7 @@ export function MemberDashboard() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500 text-sm flex items-center gap-2"><i className="fas fa-phone w-4"></i> {t.header.profile.phone}</span>
-                  <span className="font-semibold text-gray-800">{memberProfile?.contact_number || '-'}</span>
+                  <span className="font-semibold text-gray-800">{(Array.isArray(memberProfile?.profiles) ? memberProfile.profiles[0] : memberProfile?.profiles)?.phone || '-'}</span>
                 </div>
               </div>
             </div>

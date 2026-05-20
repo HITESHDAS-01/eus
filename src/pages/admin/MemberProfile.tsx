@@ -80,9 +80,10 @@ export function MemberProfile() {
 
   const totalSavings = savings.reduce((sum, s) => sum + Number(s.amount), 0);
   const totalPenalty = savings.reduce((sum, s) => sum + Number(s.penalty), 0);
-  const totalLoanDisbursed = loans.reduce((sum, l) => sum + Number(l.principal_amount), 0);
-  const totalLoanRepaid = repayments.reduce((sum, r) => sum + Number(r.principal_portion), 0);
-  const activeLoanBalance = totalLoanDisbursed - totalLoanRepaid;
+  // Use remaining_principal from active loans — the authoritative, DB-maintained field.
+  const activeLoanBalance = loans
+    .filter(l => l.status === 'active')
+    .reduce((sum, l) => sum + Number(l.remaining_principal), 0);
 
   return (
     <div className="space-y-6">

@@ -22,13 +22,18 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
     const fetchStatementData = async () => {
       setLoading(true);
       try {
+        // Fetch settings for ROI so Cat B uses the configured rate.
+        const { data: settingsRows } = await supabase.from('settings').select('key, value');
+        const sMap = Object.fromEntries((settingsRows || []).map((s: any) => [s.key, Number(s.value)]));
+        setRoiCatB(sMap['roi_category_b'] ?? 36);
+
         // Fetch member details
         const { data: member } = await supabase
           .from('members')
           .select('*, profiles(full_name, phone, photo_url)')
           .eq('id', memberId)
           .single();
-        
+
         if (member) setMemberData(member);
 
         // Fetch savings
@@ -71,6 +76,7 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
   }, [memberId]);
 
   const [printing, setPrinting] = useState(false);
+  const [roiCatB, setRoiCatB] = useState(36);
 
   const handlePrint = async () => {
     const element = document.getElementById('printable-statement');
@@ -105,9 +111,10 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
 
   const totalInstallments = savings.reduce((sum, s) => sum + Number(s.amount), 0);
   const totalPenalty = savings.reduce((sum, s) => sum + Number(s.penalty), 0);
-  const totalLoanDisbursed = loans.reduce((sum, l) => sum + Number(l.principal_amount), 0);
-  const totalLoanRepaid = repayments.reduce((sum, r) => sum + Number(r.principal_portion), 0);
-  const activeLoanBalance = totalLoanDisbursed - totalLoanRepaid;
+  // Use remaining_principal from active loans — the authoritative, DB-maintained field.
+  const activeLoanBalance = loans
+    .filter(l => l.status === 'active')
+    .reduce((sum, l) => sum + Number(l.remaining_principal), 0);
 
   // Build totalSavings per the same per-category rule used by MemberHome / Reports.
   let totalSavings = 0;
@@ -115,9 +122,9 @@ export default function StatementModal({ memberId, onClose }: StatementModalProp
   else if (memberData.category === 'B') totalSavings = Number(memberData.initial_investment || 0);
   else if (memberData.category === 'C') totalSavings = totalInstallments;
 
-  // ROI derived from category + chosen term (mirrors MemberHome).
+  // ROI derived from category + chosen term. Cat B uses the settings-configured rate.
   let roi = 0;
-  if (memberData.category === 'B') roi = 36;
+  if (memberData.category === 'B') roi = roiCatB;
   else if (memberData.category === 'C' && memberData.chosen_term_months === 24) roi = 16;
   else if (memberData.category === 'C' && memberData.chosen_term_months === 36) roi = 27;
 

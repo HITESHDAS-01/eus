@@ -274,8 +274,19 @@ CREATE TABLE ext_loan_txns (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-ALTER TABLE ext_loans DISABLE ROW LEVEL SECURITY;
-ALTER TABLE ext_loan_txns DISABLE ROW LEVEL SECURITY;`}</pre>
+-- Enable RLS and allow only admins to read/write.
+ALTER TABLE ext_loans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ext_loan_txns ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "ext_loans_admin" ON ext_loans
+  FOR ALL TO authenticated
+  USING (public.is_admin(auth.uid()))
+  WITH CHECK (public.is_admin(auth.uid()));
+
+CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
+  FOR ALL TO authenticated
+  USING (public.is_admin(auth.uid()))
+  WITH CHECK (public.is_admin(auth.uid()));`}</pre>
         </div>
         
         <Button onClick={() => window.location.reload()}>I have run the script, reload</Button>

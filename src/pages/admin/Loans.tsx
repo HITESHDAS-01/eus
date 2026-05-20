@@ -25,6 +25,7 @@ export function Loans() {
   const [repayInterest, setRepayInterest] = useState('');
   const [repayDate, setRepayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
+  const [loanEligibilityPct, setLoanEligibilityPct] = useState(0.8);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -36,6 +37,12 @@ export function Loans() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Load loan_eligibility_percent from settings (default 80%).
+      const { data: settingsRows } = await supabase.from('settings').select('key, value');
+      const settingsMap = Object.fromEntries((settingsRows || []).map((s: any) => [s.key, Number(s.value)]));
+      const pct = (settingsMap['loan_eligibility_percent'] ?? 80) / 100;
+      setLoanEligibilityPct(pct);
+
       // Need active loans first so we can subtract their balances from
       // each member's eligibility (an existing loan reduces collateral).
       const { data: loansData } = await supabase
@@ -81,7 +88,7 @@ export function Loans() {
             ...m,
             totalSavings: totalSavingsForEligibility,
             outstandingLoan: outstanding,
-            maxLoan: netSavings * 0.8,
+            maxLoan: netSavings * pct,
           };
         });
         setMembers(processedMembers);
@@ -186,34 +193,18 @@ export function Loans() {
       const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
       const receiptNumber = `LREP-${format(new Date(), 'yyyyMMddHHmmss')}-${suffix}`;
 
-      // 1. Insert Repayment
-      const repInsertData: any = {
-        loan_id: selectedLoanId,
-        amount_paid: amountPaid,
-        principal_portion: principalPortion,
-        interest_portion: interestPortion,
-        payment_date: repayDate,
-        receipt_number: receiptNumber,
-      };
-
-      if (user?.id && user.id.length > 20) {
-        repInsertData.created_by = user.id;
-      }
-
-      const { error: repError } = await supabase
-        .from('loan_repayments')
-        .insert(repInsertData);
-      if (repError) throw repError;
-
-      // 2. Update Loan
-      const { error: updateError } = await supabase
-        .from('loans')
-        .update({ 
-          remaining_principal: Math.max(0, newRemaining),
-          status: newStatus
-        })
-        .eq('id', selectedLoanId);
-      if (updateError) throw updateError;
+      // Single atomic RPC call — inserts repayment + updates loan balance in one transaction.
+      // Requires the record_loan_repayment() function to be deployed in Supabase (see SQL migration).
+      const { error: rpcError } = await supabase.rpc('record_loan_repayment', {
+        p_loan_id: selectedLoanId,
+        p_amount_paid: amountPaid,
+        p_principal_portion: principalPortion,
+        p_interest_portion: interestPortion,
+        p_payment_date: repayDate,
+        p_receipt_number: receiptNumber,
+        p_created_by: user?.id ?? null,
+      });
+      if (rpcError) throw rpcError;
 
       setSuccessMsg(`Repayment successful! Principal reduced by ${formatCurrency(principalPortion)}`);
       fetchData();
@@ -284,9 +275,14 @@ export function Loans() {
                     </div>
                   )}
                   <div className="flex justify-between items-center pt-2 border-t border-blue-200">
-                    <span className="text-sm text-blue-800 font-medium">Max new loan (80% of net):</span>
+                    <span className="text-sm text-blue-800 font-medium">Max new loan ({Math.round(loanEligibilityPct * 100)}% of net):</span>
                     <span className="text-lg font-bold text-blue-900">{formatCurrency(eligibility)}</span>
                   </div>
+                  {outstanding > 0 && eligibility > 0 && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-1">
+                      ⚠️ Member already has an active loan. A second loan is allowed but will not be visible in the member's portal until the first is closed.
+                    </p>
+                  )}
                 </div>
               );
             })()}

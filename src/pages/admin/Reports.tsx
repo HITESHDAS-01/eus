@@ -33,6 +33,11 @@ export function Reports() {
   const fetchMaturityData = async () => {
     setLoading(true);
     try {
+      // Fetch ROI settings so Cat B uses the configured rate, not a hard-coded value.
+      const { data: settingsRows } = await supabase.from('settings').select('key, value');
+      const settingsMap = Object.fromEntries((settingsRows || []).map((s: any) => [s.key, Number(s.value)]));
+      const roiCatB = settingsMap['roi_category_b'] ?? 36;
+
       const { data: membersData } = await supabase
         .from('members')
         .select(`
@@ -41,7 +46,7 @@ export function Reports() {
           savings_installments(amount)
         `)
         .eq('status', 'active');
-      
+
       if (membersData) {
         const processed = membersData.map(m => {
           const totalInstallments = m.savings_installments?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) || 0;
@@ -51,7 +56,7 @@ export function Reports() {
           else if (m.category === 'C') totalSavings = totalInstallments;
 
           let roi = 0;
-          if (m.category === 'B') roi = 36;
+          if (m.category === 'B') roi = roiCatB;
           else if (m.category === 'C' && m.chosen_term_months === 24) roi = 16;
           else if (m.category === 'C' && m.chosen_term_months === 36) roi = 27;
 
@@ -139,12 +144,13 @@ export function Reports() {
         .in('category', ['A', 'C'])
         .eq('status', 'active');
 
-      // Get installments in the date range
+      // Use month_year (not payment_date) so a late payment recorded in the
+      // next month doesn't incorrectly mark a member as paid for the prior month.
       const { data: installments } = await supabase
         .from('savings_installments')
         .select('member_id')
-        .gte('payment_date', startDate)
-        .lte('payment_date', endDate);
+        .gte('month_year', startDate)
+        .lte('month_year', endDate);
 
       if (activeMembers && installments) {
         const paidMemberIds = new Set(installments.map(tx => tx.member_id));

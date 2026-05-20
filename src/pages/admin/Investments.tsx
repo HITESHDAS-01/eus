@@ -251,9 +251,19 @@ CREATE TABLE investment_returns (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Disable RLS for easy admin access (or configure policies as needed)
-ALTER TABLE external_investments DISABLE ROW LEVEL SECURITY;
-ALTER TABLE investment_returns DISABLE ROW LEVEL SECURITY;`}</pre>
+-- Enable RLS and allow only admins to read/write.
+ALTER TABLE external_investments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE investment_returns ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "ext_investments_admin" ON external_investments
+  FOR ALL TO authenticated
+  USING (public.is_admin(auth.uid()))
+  WITH CHECK (public.is_admin(auth.uid()));
+
+CREATE POLICY "investment_returns_admin" ON investment_returns
+  FOR ALL TO authenticated
+  USING (public.is_admin(auth.uid()))
+  WITH CHECK (public.is_admin(auth.uid()));`}</pre>
           </div>
           
           <Button onClick={() => window.location.reload()}>I have run the script, reload page</Button>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, safeFormatDate } from '../lib/utils';
-import { format } from 'date-fns';
+import { format, addMonths } from 'date-fns';
 
 export function AdminHome() {
   const [stats, setStats] = useState({
@@ -76,6 +76,11 @@ export function AdminHome() {
         overdue = activeACMembers.filter(m => !paidMemberIds.has(m.id));
       }
 
+      // Settings — needed for ROI
+      const { data: settingsRows } = await supabase.from('settings').select('key, value');
+      const settingsMap = Object.fromEntries((settingsRows || []).map((s: any) => [s.key, Number(s.value)]));
+      const roiCatB = settingsMap['roi_category_b'] ?? 36;
+
       // Maturity Alerts
       const { data: allActiveMembers } = await supabase
         .from('members')
@@ -90,9 +95,10 @@ export function AdminHome() {
         maturing = allActiveMembers.map(m => {
           const joinDate = m.join_date ? new Date(m.join_date) : new Date();
           const safeJoinDate = isNaN(joinDate.getTime()) ? new Date() : joinDate;
-          const maturityDate = new Date(safeJoinDate.setMonth(safeJoinDate.getMonth() + (m.chosen_term_months || 36)));
+          // addMonths returns a NEW Date — does NOT mutate safeJoinDate (unlike setMonth).
+          const maturityDate = addMonths(safeJoinDate, m.chosen_term_months || 36);
           const monthsRemaining = differenceInMonths(maturityDate, new Date());
-          
+
           const totalInst = m.savings_installments?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) || 0;
           let totalSav = 0;
           if (m.category === 'A') totalSav = Number(m.initial_investment) + totalInst;
@@ -100,7 +106,7 @@ export function AdminHome() {
           else if (m.category === 'C') totalSav = totalInst;
 
           let roi = 0;
-          if (m.category === 'B') roi = 36;
+          if (m.category === 'B') roi = roiCatB;
           else if (m.category === 'C' && m.chosen_term_months === 24) roi = 16;
           else if (m.category === 'C' && m.chosen_term_months === 36) roi = 27;
 
