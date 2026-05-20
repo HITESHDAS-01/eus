@@ -147,7 +147,7 @@ export function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
                     value={memberCode}
                     onChange={(e) => setMemberCode(e.target.value)}
                     placeholder={`${branding.orgShort}/032026/C/001`}
-                    autoComplete="username"
+                    autoComplete="off"
                     className="w-full px-4 py-3 rounded-lg border border-gray-600 bg-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#f7b05e] focus:border-transparent transition-shadow"
                     required
                   />
