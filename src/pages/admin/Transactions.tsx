@@ -88,9 +88,39 @@ export function Transactions() {
     setSelectedMemberId(tx.member_id);
     setAmount(String(tx.amount));
     setPaymentDate(tx.payment_date);
-    // Pre-fill penalty so admin can adjust manually if needed
-    setOverridePenalty(tx.penalty != null ? String(tx.penalty) : '');
+    // Leave override blank — penalty auto-recalculates from the (possibly
+    // updated) date & amount. Admin can still type a custom value to override.
+    setOverridePenalty('');
     setIsFormModalOpen(true);
+  };
+
+  // Live preview of what penalty will be saved given current form inputs.
+  // Mirrors the logic in handleSaveTransaction so admin sees the impact
+  // of editing the date/amount before clicking Save.
+  const computePreviewPenalty = (): number => {
+    if (overridePenalty !== '' && overridePenalty != null) {
+      const p = Number(overridePenalty);
+      return isNaN(p) || p < 0 ? 0 : p;
+    }
+    const member = members.find(m => m.id === selectedMemberId);
+    const memberCategory = member?.category ?? editingTx?.members?.category;
+    if (memberCategory !== 'C' || !paymentDate || !amount) return 0;
+
+    const payDate = new Date(paymentDate);
+    if (isNaN(payDate.getTime())) return 0;
+    const dayOfMonth = getDate(payDate);
+
+    let dueDay = Number(penaltySettings?.dueDay);
+    if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) dueDay = 15;
+    let penaltyPct = Number(penaltySettings?.percentage);
+    if (isNaN(penaltyPct) || penaltyPct < 0) penaltyPct = 2;
+    let gracePeriod = Number(penaltySettings?.gracePeriod);
+    if (isNaN(gracePeriod) || gracePeriod < 0) gracePeriod = 3;
+
+    if (dayOfMonth > (dueDay + gracePeriod)) {
+      return (Number(amount) * penaltyPct) / 100;
+    }
+    return 0;
   };
 
   const closeFormModal = () => {
@@ -402,7 +432,20 @@ export function Transactions() {
                     step="0.01"
                     placeholder="Leave blank to auto-calculate"
                   />
-                  <p className="text-xs text-gray-500">Use 0 to waive a penalty, or set a custom amount.</p>
+                  {(() => {
+                    const preview = computePreviewPenalty();
+                    const isOverride = overridePenalty !== '';
+                    return (
+                      <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                        <i className="fas fa-calculator text-[#1e5a48] mr-1"></i>
+                        Will save: <strong>{formatCurrency(preview)}</strong>{' '}
+                        <span className="text-gray-400">
+                          ({isOverride ? 'manual override' : (preview > 0 ? 'auto: late payment' : 'auto: within grace period')})
+                        </span>
+                      </p>
+                    );
+                  })()}
+                  <p className="text-xs text-gray-500">Use 0 to waive a penalty, or set a custom amount. Blank = auto-calc from date.</p>
                 </div>
 
                 <div className="pt-4">
