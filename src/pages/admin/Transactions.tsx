@@ -10,7 +10,11 @@ export function Transactions() {
   const [members, setMembers] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [txToDelete, setTxToDelete] = useState<any | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // Filter State
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -20,6 +24,7 @@ export function Transactions() {
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [overridePenalty, setOverridePenalty] = useState(''); // optional manual override
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [penaltySettings, setPenaltySettings] = useState({ percentage: 5, dueDay: 15, gracePeriod: 3 });
@@ -63,71 +68,142 @@ export function Transactions() {
     }
   };
 
-  const handleAddTransaction = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setSelectedMemberId('');
+    setAmount('');
+    setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
+    setOverridePenalty('');
+    setError('');
+    setEditingTx(null);
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setIsFormModalOpen(true);
+  };
+
+  const openEditModal = (tx: any) => {
+    resetForm();
+    setEditingTx(tx);
+    setSelectedMemberId(tx.member_id);
+    setAmount(String(tx.amount));
+    setPaymentDate(tx.payment_date);
+    // Pre-fill penalty so admin can adjust manually if needed
+    setOverridePenalty(tx.penalty != null ? String(tx.penalty) : '');
+    setIsFormModalOpen(true);
+  };
+
+  const closeFormModal = () => {
+    setIsFormModalOpen(false);
+    resetForm();
+  };
+
+  const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     setError('');
 
     try {
       const member = members.find(m => m.id === selectedMemberId);
-      if (!member) throw new Error('Please select a member');
+      // For edit, the member may not be in the active members list (e.g. deactivated).
+      // Fall back to the existing transaction's joined member data.
+      const memberCategory = member?.category ?? editingTx?.members?.category;
+      if (!selectedMemberId) throw new Error('Please select a member');
       if (!paymentDate) throw new Error('Please select a payment date');
 
       const payDate = new Date(paymentDate);
       if (isNaN(payDate.getTime())) throw new Error('Invalid payment date');
 
       const dayOfMonth = getDate(payDate);
-      
-      // Calculate penalty for Cat C if paid after due date + grace period
+
+      // Penalty: use manual override if provided, else auto-calculate.
       let penalty = 0;
       let dueDay = Number(penaltySettings?.dueDay);
       if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) dueDay = 15;
-      
+
       let penaltyPct = Number(penaltySettings?.percentage);
       if (isNaN(penaltyPct) || penaltyPct < 0) penaltyPct = 2;
-      
+
       let gracePeriod = Number(penaltySettings?.gracePeriod);
       if (isNaN(gracePeriod) || gracePeriod < 0) gracePeriod = 3;
 
-      if (member.category === 'C' && dayOfMonth > (dueDay + gracePeriod)) {
+      if (overridePenalty !== '' && overridePenalty != null) {
+        const p = Number(overridePenalty);
+        if (isNaN(p) || p < 0) throw new Error('Penalty must be 0 or greater');
+        penalty = p;
+      } else if (memberCategory === 'C' && dayOfMonth > (dueDay + gracePeriod)) {
         penalty = (Number(amount) * penaltyPct) / 100;
       }
 
       const monthYear = startOfMonth(payDate);
       const dueDate = setDate(monthYear, dueDay);
-      // Random suffix prevents UNIQUE-constraint collisions when two admins
-      // record a payment in the same second.
-      const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-      const receiptNumber = `RCPT-${format(new Date(), 'yyyyMMddHHmmss')}-${suffix}`;
 
-      const insertData: any = {
-        member_id: selectedMemberId,
-        amount: Number(amount),
-        penalty: penalty,
-        payment_date: paymentDate,
-        due_date: format(dueDate, 'yyyy-MM-dd'),
-        receipt_number: receiptNumber,
-        month_year: format(monthYear, 'yyyy-MM-dd'),
-      };
+      if (editingTx) {
+        // UPDATE — keep original receipt_number & member_id (audit trail).
+        const { error: updErr } = await supabase
+          .from('savings_installments')
+          .update({
+            amount: Number(amount),
+            penalty: penalty,
+            payment_date: paymentDate,
+            due_date: format(dueDate, 'yyyy-MM-dd'),
+            month_year: format(monthYear, 'yyyy-MM-dd'),
+          })
+          .eq('id', editingTx.id);
+        if (updErr) throw updErr;
+      } else {
+        // INSERT — random suffix prevents UNIQUE-constraint collisions when two admins
+        // record a payment in the same second.
+        const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+        const receiptNumber = `RCPT-${format(new Date(), 'yyyyMMddHHmmss')}-${suffix}`;
 
-      // Only add created_by if it's a valid UUID (not a mock ID like 'admin-1')
-      if (user?.id && user.id.length > 20) {
-        insertData.created_by = user.id;
+        const insertData: any = {
+          member_id: selectedMemberId,
+          amount: Number(amount),
+          penalty: penalty,
+          payment_date: paymentDate,
+          due_date: format(dueDate, 'yyyy-MM-dd'),
+          receipt_number: receiptNumber,
+          month_year: format(monthYear, 'yyyy-MM-dd'),
+        };
+
+        // Only add created_by if it's a valid UUID (not a mock ID like 'admin-1')
+        if (user?.id && user.id.length > 20) {
+          insertData.created_by = user.id;
+        }
+
+        const { error: insertError } = await supabase
+          .from('savings_installments')
+          .insert(insertData);
+
+        if (insertError) throw insertError;
       }
 
-      const { error: insertError } = await supabase
-        .from('savings_installments')
-        .insert(insertData);
-
-      if (insertError) throw insertError;
-
-      setIsAddModalOpen(false);
+      closeFormModal();
       fetchData(); // Refresh
-      setSelectedMemberId(''); setAmount(''); setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
     } catch (err: any) {
-      setError(err.message || 'Failed to add transaction');
+      setError(err.message || 'Failed to save transaction');
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  const handleDeleteTransaction = async () => {
+    if (!txToDelete) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const { error: delErr } = await supabase
+        .from('savings_installments')
+        .delete()
+        .eq('id', txToDelete.id);
+      if (delErr) throw delErr;
+      setTxToDelete(null);
+      fetchData();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete transaction');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -144,7 +220,7 @@ export function Transactions() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Savings Transactions</h2>
-        <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
+        <Button onClick={openAddModal} className="gap-2">
           <i className="fas fa-plus"></i> Record Installment
         </Button>
       </div>
@@ -153,10 +229,10 @@ export function Transactions() {
       <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
         <div className="w-full sm:w-48">
           <Label className="text-xs text-gray-500 mb-1 block">Month</Label>
-          <Input 
-            type="month" 
-            value={filterMonth} 
-            onChange={(e) => setFilterMonth(e.target.value)} 
+          <Input
+            type="month"
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
             className="w-full"
           />
         </div>
@@ -189,13 +265,14 @@ export function Transactions() {
                 <th className="p-4 font-medium text-right">Amount</th>
                 <th className="p-4 font-medium text-right">Penalty</th>
                 <th className="p-4 font-medium text-right">Total</th>
+                <th className="p-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">Loading...</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-500">Loading...</td></tr>
               ) : filteredTransactions.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">No transactions found for selected filters.</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-500">No transactions found for selected filters.</td></tr>
               ) : (
                 filteredTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50">
@@ -209,9 +286,9 @@ export function Transactions() {
                             const photoUrl = profile?.photo_url;
                             if (photoUrl) {
                               return (
-                                <img 
-                                  src={photoUrl} 
-                                  alt={profile?.full_name || 'Member'} 
+                                <img
+                                  src={photoUrl}
+                                  alt={profile?.full_name || 'Member'}
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
                                   loading="lazy"
@@ -232,6 +309,22 @@ export function Transactions() {
                     <td className="p-4 text-right font-medium text-green-600">{formatCurrency(tx.amount)}</td>
                     <td className="p-4 text-right text-red-500">{tx.penalty > 0 ? formatCurrency(tx.penalty) : '-'}</td>
                     <td className="p-4 text-right font-bold">{formatCurrency(Number(tx.amount) + Number(tx.penalty))}</td>
+                    <td className="p-4 text-right space-x-3 whitespace-nowrap">
+                      <button
+                        onClick={() => openEditModal(tx)}
+                        className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm"
+                        title="Edit"
+                      >
+                        <i className="fas fa-edit"></i>
+                      </button>
+                      <button
+                        onClick={() => { setDeleteError(''); setTxToDelete(tx); }}
+                        className="text-red-500 hover:text-red-700 font-medium text-sm"
+                        title="Delete"
+                      >
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -240,26 +333,26 @@ export function Transactions() {
         </div>
       </div>
 
-      {/* Add Transaction Modal */}
-      {isAddModalOpen && (
+      {/* Add / Edit Transaction Modal */}
+      {isFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
             <div className="p-5 border-b flex justify-between items-center bg-[#0b3b2f] text-white">
-              <h3 className="font-bold text-lg">Record Installment</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-white/70 hover:text-white">
+              <h3 className="font-bold text-lg">{editingTx ? 'Edit Installment' : 'Record Installment'}</h3>
+              <button onClick={closeFormModal} className="text-white/70 hover:text-white">
                 <i className="fas fa-times text-xl"></i>
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto">
               {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{error}</div>}
-              
-              <form onSubmit={handleAddTransaction} className="space-y-4">
+
+              <form onSubmit={handleSaveTransaction} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Select Member (Cat A & C only)</Label>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={selectedMemberId} 
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    value={selectedMemberId}
                     onChange={(e) => {
                       const newMemberId = e.target.value;
                       setSelectedMemberId(newMemberId);
@@ -271,20 +364,27 @@ export function Transactions() {
                       }
                     }}
                     required
+                    disabled={!!editingTx}
                   >
                     <option value="">-- Select Member --</option>
+                    {editingTx && !members.find(m => m.id === selectedMemberId) && (
+                      <option value={selectedMemberId}>
+                        {editingTx.members?.member_code} - {Array.isArray(editingTx.members?.profiles) ? editingTx.members?.profiles[0]?.full_name : editingTx.members?.profiles?.full_name}
+                      </option>
+                    )}
                     {members.map(m => (
                       <option key={m.id} value={m.id}>
                         {m.member_code} - {m.profiles?.full_name} (Cat {m.category})
                       </option>
                     ))}
                   </select>
+                  {editingTx && <p className="text-xs text-gray-500">Member cannot be changed on edit (audit trail).</p>}
                 </div>
 
                 <div className="space-y-2">
                   <Label>Payment Date</Label>
                   <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required />
-                  <p className="text-xs text-gray-500">Penalty of {penaltySettings.percentage}% will be auto-applied if date is after the {penaltySettings.dueDay + penaltySettings.gracePeriod}th ({penaltySettings.dueDay}th + {penaltySettings.gracePeriod} days grace).</p>
+                  <p className="text-xs text-gray-500">Penalty of {penaltySettings.percentage}% auto-applies if date is after the {penaltySettings.dueDay + penaltySettings.gracePeriod}th ({penaltySettings.dueDay}th + {penaltySettings.gracePeriod} days grace).</p>
                 </div>
 
                 <div className="space-y-2">
@@ -292,12 +392,57 @@ export function Transactions() {
                   <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required min="1" />
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Penalty Override (₹) <span className="text-gray-400 font-normal">— optional</span></Label>
+                  <Input
+                    type="number"
+                    value={overridePenalty}
+                    onChange={(e) => setOverridePenalty(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    placeholder="Leave blank to auto-calculate"
+                  />
+                  <p className="text-xs text-gray-500">Use 0 to waive a penalty, or set a custom amount.</p>
+                </div>
+
                 <div className="pt-4">
                   <Button type="submit" className="w-full" disabled={formLoading}>
-                    {formLoading ? 'Recording...' : 'Record Transaction'}
+                    {formLoading ? 'Saving…' : (editingTx ? 'Update Transaction' : 'Record Transaction')}
                   </Button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-red-50 text-red-800 flex items-center gap-3">
+              <i className="fas fa-exclamation-triangle text-xl"></i>
+              <h3 className="font-bold text-lg">Confirm Deletion</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Permanently delete this installment? This will reduce the member's total savings.
+              </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 text-sm space-y-1">
+                <div><span className="text-gray-500">Receipt:</span> <span className="font-mono">{txToDelete.receipt_number}</span></div>
+                <div><span className="text-gray-500">Member:</span> <span className="font-medium">{Array.isArray(txToDelete.members?.profiles) ? txToDelete.members?.profiles[0]?.full_name : txToDelete.members?.profiles?.full_name} ({txToDelete.members?.member_code})</span></div>
+                <div><span className="text-gray-500">Date:</span> {safeFormatDate(txToDelete.payment_date)}</div>
+                <div><span className="text-gray-500">Total:</span> <span className="font-bold">{formatCurrency(Number(txToDelete.amount) + Number(txToDelete.penalty))}</span></div>
+              </div>
+              {deleteError && (
+                <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{deleteError}</div>
+              )}
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="outline" onClick={() => setTxToDelete(null)} disabled={deleting}>Cancel</Button>
+                <Button onClick={handleDeleteTransaction} disabled={deleting} className="bg-red-600 hover:bg-red-700 text-white">
+                  {deleting ? 'Deleting…' : 'Delete Transaction'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
