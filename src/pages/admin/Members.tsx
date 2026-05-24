@@ -59,6 +59,10 @@ export function Members() {
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -172,9 +176,47 @@ export function Members() {
       if (profileErr) throw profileErr;
 
       setMemberToDelete(null);
+      // If this member was in the selection set, drop it.
+      setSelectedIds((prev) => {
+        if (!prev.has(memberToDelete)) return prev;
+        const next = new Set(prev);
+        next.delete(memberToDelete);
+        return next;
+      });
       fetchMembers();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete member.');
+    }
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    setBulkDeleteError('');
+    try {
+      const ids = Array.from(selectedIds);
+      // members first (cascade), then profiles. Both via .in() for one round-trip each.
+      const { error: memberErr } = await supabase.from('members').delete().in('id', ids);
+      if (memberErr) throw memberErr;
+      const { error: profileErr } = await supabase.from('profiles').delete().in('id', ids);
+      if (profileErr) throw profileErr;
+
+      setSelectedIds(new Set());
+      setIsBulkDeleteModalOpen(false);
+      setSuccessMessage(`${ids.length} member${ids.length === 1 ? '' : 's'} deleted.`);
+      fetchMembers();
+    } catch (err) {
+      setBulkDeleteError(err instanceof Error ? err.message : 'Failed to delete selected members.');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -394,11 +436,58 @@ export function Members() {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-900">
+            <i className="fas fa-check-square text-amber-600"></i>
+            <span><strong>{selectedIds.size}</strong> member{selectedIds.size === 1 ? '' : 's'} selected</span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setSelectedIds(new Set())} className="gap-2">
+              <i className="fas fa-times"></i> Clear
+            </Button>
+            <Button
+              onClick={() => { setBulkDeleteError(''); setIsBulkDeleteModalOpen(true); }}
+              className="bg-red-600 hover:bg-red-700 text-white gap-2"
+            >
+              <i className="fas fa-trash"></i> Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-600">
               <tr>
+                <th className="p-4 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 cursor-pointer accent-[#1e5a48]"
+                    aria-label="Select all on this page"
+                    ref={(el) => {
+                      if (!el) return;
+                      const visibleIds = filteredMembers.map(m => m.id);
+                      const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+                      const someSelected = visibleIds.some(id => selectedIds.has(id));
+                      el.checked = allSelected;
+                      el.indeterminate = !allSelected && someSelected;
+                    }}
+                    onChange={(e) => {
+                      const visibleIds = filteredMembers.map(m => m.id);
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) {
+                          visibleIds.forEach(id => next.add(id));
+                        } else {
+                          visibleIds.forEach(id => next.delete(id));
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </th>
                 <th className="p-4 font-medium">Member</th>
                 <th className="p-4 font-medium">Category</th>
                 <th className="p-4 font-medium">Status</th>
@@ -407,60 +496,76 @@ export function Members() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={4} className="p-8 text-center text-gray-500">Loading members...</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-gray-500">Loading members...</td></tr>
               ) : filteredMembers.length === 0 ? (
-                <tr><td colSpan={4} className="p-8 text-center text-gray-500">No members found matching your search.</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-gray-500">No members found matching your search.</td></tr>
               ) : (
-                filteredMembers.map((member) => (
-                  <tr key={member.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/admin/members/${member.id}`)}>
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10">
-                          {member.profiles?.photo_url ? (
-                            <img
-                              src={member.profiles.photo_url}
-                              alt={member.profiles?.full_name || 'Member'}
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <i className="fas fa-user"></i>
-                          )}
+                filteredMembers.map((member) => {
+                  const isSelected = selectedIds.has(member.id);
+                  return (
+                    <tr
+                      key={member.id}
+                      className={`transition-colors cursor-pointer ${isSelected ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-gray-50'}`}
+                      onClick={() => navigate(`/admin/members/${member.id}`)}
+                    >
+                      <td className="p-4 w-10" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 cursor-pointer accent-[#1e5a48]"
+                          aria-label={`Select ${member.profiles?.full_name || member.member_code}`}
+                          checked={isSelected}
+                          onChange={() => toggleSelectOne(member.id)}
+                        />
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10">
+                            {member.profiles?.photo_url ? (
+                              <img
+                                src={member.profiles.photo_url}
+                                alt={member.profiles?.full_name || 'Member'}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <i className="fas fa-user"></i>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{member.profiles?.full_name}</p>
+                            <p className="text-xs font-mono text-[#1e5a48]">{member.member_code}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-gray-800">{member.profiles?.full_name}</p>
-                          <p className="text-xs font-mono text-[#1e5a48]">{member.member_code}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                        member.category === 'A' ? 'bg-purple-100 text-purple-700' :
-                        member.category === 'B' ? 'bg-blue-100 text-blue-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        Cat {member.category}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span className="bg-green-50 text-green-600 px-2 py-1 rounded text-xs font-medium border border-green-200">
-                        {member.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right space-x-3" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => setStatementMemberId(member.id)} className="text-[#1e5a48] hover:text-[#154033] font-medium text-sm" title="Print Statement">
-                        <i className="fas fa-print"></i>
-                      </button>
-                      <button onClick={() => openEditModal(member)} className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm" title="Edit">
-                        <i className="fas fa-edit"></i>
-                      </button>
-                      <button onClick={() => confirmDelete(member.id)} className="text-red-500 hover:text-red-700 font-medium text-sm" title="Delete">
-                        <i className="fas fa-trash"></i>
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                          member.category === 'A' ? 'bg-purple-100 text-purple-700' :
+                          member.category === 'B' ? 'bg-blue-100 text-blue-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          Cat {member.category}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className="bg-green-50 text-green-600 px-2 py-1 rounded text-xs font-medium border border-green-200">
+                          {member.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right space-x-3" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setStatementMemberId(member.id)} className="text-[#1e5a48] hover:text-[#154033] font-medium text-sm" title="Print Statement">
+                          <i className="fas fa-print"></i>
+                        </button>
+                        <button onClick={() => openEditModal(member)} className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm" title="Edit">
+                          <i className="fas fa-edit"></i>
+                        </button>
+                        <button onClick={() => confirmDelete(member.id)} className="text-red-500 hover:text-red-700 font-medium text-sm" title="Delete">
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -709,6 +814,47 @@ export function Members() {
               <div className="flex justify-end gap-3 mt-6">
                 <Button variant="outline" onClick={() => setMemberToDelete(null)}>Cancel</Button>
                 <Button onClick={handleDeleteMember} className="bg-red-600 hover:bg-red-700 text-white">Delete Member</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-red-50 text-red-800 flex items-center gap-3">
+              <i className="fas fa-exclamation-triangle text-xl"></i>
+              <h3 className="font-bold text-lg">Delete {selectedIds.size} Members?</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Permanently delete <strong>{selectedIds.size}</strong> selected member{selectedIds.size === 1 ? '' : 's'}? All their savings, loans, and repayments will be removed too. This cannot be undone.
+              </p>
+              <div className="max-h-40 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 text-sm space-y-1">
+                {filteredMembers
+                  .filter((m) => selectedIds.has(m.id))
+                  .slice(0, 20)
+                  .map((m) => (
+                    <div key={m.id} className="flex justify-between">
+                      <span className="font-medium">{m.profiles?.full_name || '—'}</span>
+                      <span className="font-mono text-xs text-gray-500">{m.member_code}</span>
+                    </div>
+                  ))}
+                {selectedIds.size > 20 && (
+                  <p className="text-xs text-gray-500 italic pt-2 border-t border-gray-200">
+                    …and {selectedIds.size - 20} more
+                  </p>
+                )}
+              </div>
+              {bulkDeleteError && (
+                <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{bulkDeleteError}</div>
+              )}
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="outline" onClick={() => setIsBulkDeleteModalOpen(false)} disabled={bulkDeleting}>Cancel</Button>
+                <Button onClick={handleBulkDelete} disabled={bulkDeleting} className="bg-red-600 hover:bg-red-700 text-white">
+                  {bulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size} Members`}
+                </Button>
               </div>
             </div>
           </div>
