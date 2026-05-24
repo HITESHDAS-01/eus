@@ -52,6 +52,7 @@ export function Members() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [sortBy, setSortBy] = useState<'join_desc' | 'join_asc' | 'name_asc' | 'name_desc' | 'code_asc' | 'code_desc'>('join_desc');
   const [statementMemberId, setStatementMemberId] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState('');
@@ -66,6 +67,7 @@ export function Members() {
   const [monthlyInstallment, setMonthlyInstallment] = useState('100');
   const [status, setStatus] = useState('active');
   const [initialPassword, setInitialPassword] = useState('');
+  const [resetPassword, setResetPassword] = useState(''); // optional, edit modal only
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -95,7 +97,7 @@ export function Members() {
     setMemberCode(''); setJoinDate(format(new Date(), 'yyyy-MM-dd'));
     setCategory('C'); setInitialInvestment(''); setTerm('24');
     setMonthlyInstallment('100'); setStatus('active');
-    setInitialPassword(''); setError('');
+    setInitialPassword(''); setResetPassword(''); setError('');
   };
 
   const openAddModal = () => {
@@ -199,8 +201,23 @@ export function Members() {
           .eq('id', editingMemberId);
         if (memberError) throw memberError;
 
+        // Optional password reset
+        if (resetPassword.trim() !== '') {
+          if (resetPassword.length < 6) {
+            throw new Error('New password must be at least 6 characters.');
+          }
+          await callEdgeFunction<{ ok: boolean }>('admin-reset-member-password', {
+            member_id: editingMemberId,
+            new_password: resetPassword,
+          });
+        }
+
         setIsEditModalOpen(false);
-        setSuccessMessage('Member updated successfully.');
+        setSuccessMessage(
+          resetPassword.trim() !== ''
+            ? `Member updated. New password: ${resetPassword}`
+            : 'Member updated successfully.'
+        );
       } else {
         if (!initialPassword || initialPassword.length < 6) {
           throw new Error('Initial password must be at least 6 characters. Share this with the member; they can change it later.');
@@ -235,14 +252,32 @@ export function Members() {
     }
   };
 
-  const filteredMembers = members.filter((member) => {
-    const matchesSearch =
-      (member.profiles?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (member.member_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (member.profiles?.phone || '').includes(searchQuery);
-    const matchesCategory = categoryFilter === 'All' || member.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredMembers = members
+    .filter((member) => {
+      const matchesSearch =
+        (member.profiles?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (member.member_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (member.profiles?.phone || '').includes(searchQuery);
+      const matchesCategory = categoryFilter === 'All' || member.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      const nameA = (a.profiles?.full_name || '').toLowerCase();
+      const nameB = (b.profiles?.full_name || '').toLowerCase();
+      const codeA = a.member_code || '';
+      const codeB = b.member_code || '';
+      const dateA = a.join_date || '';
+      const dateB = b.join_date || '';
+      switch (sortBy) {
+        case 'name_asc':  return nameA.localeCompare(nameB);
+        case 'name_desc': return nameB.localeCompare(nameA);
+        case 'code_asc':  return codeA.localeCompare(codeB);
+        case 'code_desc': return codeB.localeCompare(codeA);
+        case 'join_asc':  return dateA.localeCompare(dateB);
+        case 'join_desc':
+        default:          return dateB.localeCompare(dateA);
+      }
+    });
 
   return (
     <div className="p-6 space-y-6">
@@ -302,6 +337,21 @@ export function Members() {
             <option value="A">Category A</option>
             <option value="B">Category B</option>
             <option value="C">Category C</option>
+          </select>
+        </div>
+        <div className="w-full sm:w-56">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1e5a48] focus:border-transparent bg-white"
+            title="Sort members"
+          >
+            <option value="join_desc">Newest first (join date)</option>
+            <option value="join_asc">Oldest first (join date)</option>
+            <option value="name_asc">Name A → Z</option>
+            <option value="name_desc">Name Z → A</option>
+            <option value="code_asc">Member ID A → Z</option>
+            <option value="code_desc">Member ID Z → A</option>
           </select>
         </div>
       </div>
@@ -516,6 +566,21 @@ export function Members() {
                       <option value="inactive">Inactive</option>
                       <option value="matured">Matured</option>
                     </select>
+                  </div>
+                )}
+
+                {editingMemberId && (
+                  <div className="space-y-2 border-t border-gray-200 pt-4">
+                    <Label>Reset Password <span className="text-gray-400 font-normal">— optional</span></Label>
+                    <Input
+                      type="text"
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      minLength={6}
+                      placeholder="Leave blank to keep current password"
+                      autoComplete="new-password"
+                    />
+                    <p className="text-xs text-gray-500">If set, the member's login password will be replaced. Min 6 characters. Share with the member after saving.</p>
                   </div>
                 )}
 
