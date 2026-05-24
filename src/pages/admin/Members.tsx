@@ -15,7 +15,17 @@ type MemberRow = {
   initial_investment: number | null;
   monthly_installment: number | null;
   chosen_term_months: number | null;
-  profiles: { full_name: string | null; phone: string | null; photo_url: string | null } | null;
+  profiles: {
+    full_name: string | null;
+    phone: string | null;
+    photo_url: string | null;
+    address: string | null;
+    father_husband_name: string | null;
+    gender: string | null;
+    date_of_birth: string | null;
+    aadhaar_vid: string | null;
+    nominee_name: string | null;
+  } | null;
 };
 
 async function callEdgeFunction<T>(name: string, payload: unknown): Promise<T> {
@@ -66,6 +76,13 @@ export function Members() {
   const [term, setTerm] = useState('24');
   const [monthlyInstallment, setMonthlyInstallment] = useState('100');
   const [status, setStatus] = useState('active');
+  // Personal info
+  const [address, setAddress] = useState('');
+  const [fatherHusbandName, setFatherHusbandName] = useState('');
+  const [gender, setGender] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [aadhaarVid, setAadhaarVid] = useState('');
+  const [nomineeName, setNomineeName] = useState('');
   const [initialPassword, setInitialPassword] = useState('');
   const [resetPassword, setResetPassword] = useState(''); // optional, edit modal only
   const [formLoading, setFormLoading] = useState(false);
@@ -82,7 +99,7 @@ export function Members() {
     setError('');
     const { data, error: err } = await supabase
       .from('members')
-      .select('id, member_code, category, status, join_date, initial_investment, monthly_installment, chosen_term_months, profiles(full_name, phone, photo_url)')
+      .select('id, member_code, category, status, join_date, initial_investment, monthly_installment, chosen_term_months, profiles(full_name, phone, photo_url, address, father_husband_name, gender, date_of_birth, aadhaar_vid, nominee_name)')
       .order('join_date', { ascending: false });
     if (err) {
       setError(err.message);
@@ -98,6 +115,8 @@ export function Members() {
     setCategory('C'); setInitialInvestment(''); setTerm('24');
     setMonthlyInstallment('100'); setStatus('active');
     setInitialPassword(''); setResetPassword(''); setError('');
+    setAddress(''); setFatherHusbandName(''); setGender('');
+    setDateOfBirth(''); setAadhaarVid(''); setNomineeName('');
   };
 
   const openAddModal = () => {
@@ -119,6 +138,13 @@ export function Members() {
     setTerm(member.chosen_term_months?.toString() || '24');
     setMonthlyInstallment(member.monthly_installment?.toString() || '100');
     setStatus(member.status || 'active');
+    setAddress(profile?.address || '');
+    setFatherHusbandName(profile?.father_husband_name || '');
+    setGender(profile?.gender || '');
+    setDateOfBirth(profile?.date_of_birth || '');
+    setAadhaarVid(profile?.aadhaar_vid || '');
+    setNomineeName(profile?.nominee_name || '');
+    setResetPassword('');
     setEditingMemberId(member.id);
     setIsEditModalOpen(true);
   };
@@ -183,6 +209,12 @@ export function Members() {
             full_name: fullName,
             phone: phone || null,
             photo_url: finalPhotoUrl || null,
+            address: address || null,
+            father_husband_name: fatherHusbandName || null,
+            gender: gender || null,
+            date_of_birth: dateOfBirth || null,
+            aadhaar_vid: aadhaarVid || null,
+            nominee_name: nomineeName || null,
           })
           .eq('id', editingMemberId);
         if (profileError) throw profileError;
@@ -219,11 +251,11 @@ export function Members() {
             : 'Member updated successfully.'
         );
       } else {
-        if (!initialPassword || initialPassword.length < 6) {
-          throw new Error('Initial password must be at least 6 characters. Share this with the member; they can change it later.');
+        if (initialPassword && initialPassword.length < 6) {
+          throw new Error('Initial password must be at least 6 characters (or leave blank to auto-generate).');
         }
 
-        const result = await callEdgeFunction<{ id: string; member_code: string; login_email: string }>(
+        const result = await callEdgeFunction<{ id: string; member_code: string; login_email: string; password: string }>(
           'admin-create-member',
           {
             full_name: fullName,
@@ -235,13 +267,19 @@ export function Members() {
             monthly_installment: category === 'A' ? 1000 : (category === 'C' ? Number(monthlyInstallment) : null),
             chosen_term_months: category === 'B' ? 36 : Number(term),
             join_date: joinDate,
-            password: initialPassword,
+            password: initialPassword || '__AUTO__',
+            address: address || null,
+            father_husband_name: fatherHusbandName || null,
+            gender: gender || null,
+            date_of_birth: dateOfBirth || null,
+            aadhaar_vid: aadhaarVid || null,
+            nominee_name: nomineeName || null,
           },
         );
 
         setIsAddModalOpen(false);
         setSuccessMessage(`Member ${result.member_code} created.`);
-        setLastCreatedCredentials({ code: result.member_code, password: initialPassword });
+        setLastCreatedCredentials({ code: result.member_code, password: result.password || initialPassword });
       }
 
       fetchMembers();
@@ -463,18 +501,79 @@ export function Members() {
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} pattern="[0-9]{10}" placeholder="10 digit number" />
                 </div>
 
-                {!editingMemberId && (
+                <div className="space-y-2">
+                  <Label>Father / Husband Name (Optional)</Label>
+                  <Input value={fatherHusbandName} onChange={(e) => setFatherHusbandName(e.target.value)} placeholder="Guardian or spouse name" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Initial Password</Label>
+                    <Label>Gender (Optional)</Label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                    >
+                      <option value="">-- Select --</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date of Birth (Optional)</Label>
+                    <Input
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={(e) => setDateOfBirth(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Address (Optional)</Label>
+                  <textarea
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    rows={2}
+                    placeholder="Residential address"
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Aadhaar / VID No. (Optional)</Label>
+                  <Input
+                    type="text"
+                    value={aadhaarVid}
+                    onChange={(e) => setAadhaarVid(e.target.value.replace(/[\s-]/g, ''))}
+                    pattern="[0-9]{12}"
+                    maxLength={12}
+                    placeholder="12-digit Aadhaar / VID"
+                    autoComplete="off"
+                  />
+                  {aadhaarVid && !/^\d{12}$/.test(aadhaarVid) && (
+                    <p className="text-xs text-yellow-700"><i className="fas fa-exclamation-triangle"></i> Should be 12 digits</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Nominee Name (Optional)</Label>
+                  <Input value={nomineeName} onChange={(e) => setNomineeName(e.target.value)} placeholder="Nominee for the account" />
+                </div>
+
+                {!editingMemberId && (
+                  <div className="space-y-2 border-t border-gray-200 pt-4">
+                    <Label>Initial Password <span className="text-gray-400 font-normal">— optional</span></Label>
                     <Input
                       type="text"
                       value={initialPassword}
                       onChange={(e) => setInitialPassword(e.target.value)}
-                      required
                       minLength={6}
-                      placeholder="Min 6 chars — share with member"
+                      placeholder="Leave blank to auto-generate as EUS@<seq>"
+                      autoComplete="new-password"
                     />
-                    <p className="text-xs text-gray-500">The member can change this themselves after first login.</p>
+                    <p className="text-xs text-gray-500">Blank → auto-generates <code className="bg-gray-100 px-1 rounded">EUS@001</code>-style password from the member's sequence number.</p>
                   </div>
                 )}
 
