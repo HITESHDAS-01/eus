@@ -32,8 +32,13 @@ type ParsedRow = {
   chosen_term_months: number | null;
   status: Status;
   join_date: string; // yyyy-MM-dd
-  password: string;
-  generatedPassword: boolean; // true if we auto-filled because the column was empty
+  // Optional personal info
+  address: string | null;
+  father_husband_name: string | null;
+  gender: string | null;
+  date_of_birth: string | null; // yyyy-MM-dd
+  aadhaar_vid: string | null;
+  nominee_name: string | null;
   warnings: string[];
   errors: string[];
 };
@@ -42,6 +47,7 @@ type ImportResult = {
   row: ParsedRow;
   ok: boolean;
   member_code?: string;
+  password?: string; // returned by Edge Function (EUS@<seq>)
   error?: string;
 };
 
@@ -72,7 +78,7 @@ async function callEdgeFunction<T>(name: string, payload: unknown): Promise<T> {
 // Column aliases — accept lots of casing/spelling variants from real-world files.
 // ---------------------------------------------------------------------------
 const COL = {
-  full_name: ['full name', 'name', 'member name', 'নাম'],
+  full_name: ['member name', 'full name', 'name', 'নাম'],
   phone: ['phone', 'mobile', 'mobile number', 'phone number', 'ফোন'],
   member_code: ['member id', 'member code', 'id', 'code'],
   category: ['category', 'cat', 'class', 'শ্রেণী'],
@@ -81,7 +87,13 @@ const COL = {
   chosen_term_months: ['term', 'term months', 'duration', 'months'],
   status: ['status', 'state'],
   join_date: ['join date', 'joining date', 'date', 'start date'],
-  password: ['password', 'pwd', 'pin'],
+  // New personal-info fields
+  address: ['address', 'addr', 'residence'],
+  father_husband_name: ['father/husband name', 'father / husband name', 'father husband name', 'father name', 'husband name', 'guardian', 'guardian name', 's/o', 'd/o', 'w/o'],
+  gender: ['gender', 'sex'],
+  date_of_birth: ['date of birth', 'dob', 'birth date', 'birthday'],
+  aadhaar_vid: ['aadhaar / vid no.', 'aadhaar / vid no', 'aadhaar/vid no.', 'aadhaar/vid no', 'aadhaar / vid', 'aadhaar/vid', 'aadhaar no.', 'aadhaar no', 'aadhaar number', 'aadhaar', 'aadhar', 'vid', 'vid no', 'vid number'],
+  nominee_name: ['nominee name', 'nominee'],
 };
 
 function findColumn(row: Record<string, unknown>, aliases: string[]): unknown {
@@ -138,22 +150,28 @@ function normalizePhone(value: unknown): string | null {
   return digits;
 }
 
-function generatePassword(): string {
-  // 8 chars from an unambiguous alphabet (no 0/O/1/l/I).
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let out = '';
-  for (let i = 0; i < 8; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+function normalizeGender(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const s = String(value).trim().toLowerCase();
+  if (['m', 'male', 'man'].includes(s)) return 'Male';
+  if (['f', 'female', 'woman'].includes(s)) return 'Female';
+  if (['o', 'other'].includes(s)) return 'Other';
+  // Pass through as-is (capitalized) for anything else
+  return String(value).trim();
 }
 
-function parseRow(raw: Record<string, unknown>, rowNumber: number, autoPasswords: boolean): ParsedRow {
+function normalizeAadhaar(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  // Strip spaces/hyphens but keep digits and 'X' (masked digits).
+  return String(value).replace(/[\s-]/g, '').trim() || null;
+}
+
+function parseRow(raw: Record<string, unknown>, rowNumber: number): ParsedRow {
   const errors: string[] = [];
   const warnings: string[] = [];
 
   const full_name = String(findColumn(raw, COL.full_name) ?? '').trim();
-  if (!full_name) errors.push('Full name is required');
+  if (!full_name) errors.push('Member name is required');
 
   const phone = normalizePhone(findColumn(raw, COL.phone));
   if (phone && phone.length < 7) warnings.push(`Phone "${phone}" looks too short`);
@@ -187,8 +205,7 @@ function parseRow(raw: Record<string, unknown>, rowNumber: number, autoPasswords
   // Cat B is always 36 months by business rule.
   if (category === 'B') chosen_term_months = 36;
   if (chosen_term_months == null) {
-    chosen_term_months = category === 'C' ? 24 : null;
-    if (category === 'C') warnings.push('Term not given, defaulted to 24 months');
+    chosen_term_months = category === 'C' ? 24 : (category === 'A' ? 36 : null);
   }
 
   const statusRaw = String(findColumn(raw, COL.status) ?? 'active').trim().toLowerCase();
@@ -202,19 +219,28 @@ function parseRow(raw: Record<string, unknown>, rowNumber: number, autoPasswords
     warnings.push(`Could not parse join date "${join_date_raw}", using today`);
   }
 
-  const passwordRaw = String(findColumn(raw, COL.password) ?? '').trim();
-  let password = passwordRaw;
-  let generatedPassword = false;
-  if (!password) {
-    if (autoPasswords) {
-      password = generatePassword();
-      generatedPassword = true;
-    } else {
-      errors.push('Password is required (or enable auto-generate)');
-    }
-  } else if (password.length < 6) {
-    errors.push('Password must be at least 6 characters');
+  // New personal info fields
+  const addressRaw = findColumn(raw, COL.address);
+  const address = addressRaw != null && addressRaw !== '' ? String(addressRaw).trim() : null;
+
+  const fhnRaw = findColumn(raw, COL.father_husband_name);
+  const father_husband_name = fhnRaw != null && fhnRaw !== '' ? String(fhnRaw).trim() : null;
+
+  const gender = normalizeGender(findColumn(raw, COL.gender));
+
+  const dobRaw = findColumn(raw, COL.date_of_birth);
+  const date_of_birth = dobRaw ? parseExcelDate(dobRaw) : null;
+  if (dobRaw && !date_of_birth) {
+    warnings.push(`Could not parse date of birth "${dobRaw}", skipped`);
   }
+
+  const aadhaar_vid = normalizeAadhaar(findColumn(raw, COL.aadhaar_vid));
+  if (aadhaar_vid && !/^\d{12}$/.test(aadhaar_vid)) {
+    warnings.push(`Aadhaar/VID "${aadhaar_vid}" is not a 12-digit number`);
+  }
+
+  const nomineeRaw = findColumn(raw, COL.nominee_name);
+  const nominee_name = nomineeRaw != null && nomineeRaw !== '' ? String(nomineeRaw).trim() : null;
 
   return {
     rowNumber,
@@ -227,8 +253,12 @@ function parseRow(raw: Record<string, unknown>, rowNumber: number, autoPasswords
     chosen_term_months,
     status,
     join_date,
-    password,
-    generatedPassword,
+    address,
+    father_husband_name,
+    gender,
+    date_of_birth,
+    aadhaar_vid,
+    nominee_name,
     warnings,
     errors,
   };
@@ -250,7 +280,6 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
   const [step, setStep] = useState<Step>('pick');
   const [parsing, setParsing] = useState(false);
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
-  const [autoPasswords, setAutoPasswords] = useState(true);
   const [overwriteWarnings, setOverwriteWarnings] = useState(false);
 
   const [progressDone, setProgressDone] = useState(0);
@@ -272,45 +301,59 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
 
   const handleDownloadTemplate = async () => {
     const XLSX = await import('xlsx');
+    // Match column order/casing the admin requested.
     const sample = [
       {
-        'Full Name': 'Rahul Sharma',
-        'Phone': '9876543210',
+        'MEMBER ID': '',
+        'MEMBER NAME': 'Rahul Sharma',
         'Category': 'C',
-        'Initial Investment': 0,
-        'Monthly Installment': 100,
-        'Term Months': 24,
+        'Phone': '9876543210',
+        'Address': 'Katpuha, Nalbari, Assam',
+        'Father/Husband Name': 'Ramesh Sharma',
+        'Gender': 'Male',
+        'Date of Birth': '01/01/1990',
+        'Aadhaar / VID No.': '123456789012',
+        'Nominee Name': 'Sita Sharma',
         'Join Date': '01/01/2026',
         'Status': 'active',
-        'Password': '',
-        'Member ID': '',
+        'INITIAL INVESTMENT': 0,
+        'Monthly Installment': 100,
       },
       {
-        'Full Name': 'Priya Investor',
-        'Phone': '9876500000',
+        'MEMBER ID': '',
+        'MEMBER NAME': 'Priya Investor',
         'Category': 'B',
-        'Initial Investment': 50000,
-        'Monthly Installment': '',
-        'Term Months': 36,
+        'Phone': '9876500000',
+        'Address': 'Guwahati, Assam',
+        'Father/Husband Name': 'Anil Investor',
+        'Gender': 'Female',
+        'Date of Birth': '15/06/1985',
+        'Aadhaar / VID No.': '987654321098',
+        'Nominee Name': 'Anil Investor',
         'Join Date': '15/02/2026',
         'Status': 'active',
-        'Password': '',
-        'Member ID': '',
+        'INITIAL INVESTMENT': 50000,
+        'Monthly Installment': '',
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sample);
-    // Add an instructions sheet so admins know what each column does.
+
     const instructions = [
-      { Column: 'Full Name', Required: 'Yes', Notes: 'Member full name' },
-      { Column: 'Phone', Required: 'No', Notes: '10-digit Indian mobile. Country codes auto-stripped.' },
+      { Column: 'MEMBER ID', Required: 'No', Notes: 'Leave blank to auto-generate (recommended).' },
+      { Column: 'MEMBER NAME', Required: 'Yes', Notes: 'Member full name.' },
       { Column: 'Category', Required: 'Yes', Notes: 'A (founder), B (investor), or C (public). Defaults to C.' },
-      { Column: 'Initial Investment', Required: 'For A/B', Notes: `One-time deposit in ${locale.currencySymbol}. For Cat A & B.` },
-      { Column: 'Monthly Installment', Required: 'For A/C', Notes: `Recurring monthly deposit in ${locale.currencySymbol}.` },
-      { Column: 'Term Months', Required: 'For C', Notes: '24 or 36. Cat B is always 36.' },
+      { Column: 'Phone', Required: 'No', Notes: '10-digit Indian mobile. Country codes auto-stripped.' },
+      { Column: 'Address', Required: 'No', Notes: 'Residential address.' },
+      { Column: 'Father/Husband Name', Required: 'No', Notes: 'Guardian or spouse name.' },
+      { Column: 'Gender', Required: 'No', Notes: 'Male / Female / Other (M, F, O also accepted).' },
+      { Column: 'Date of Birth', Required: 'No', Notes: 'DD/MM/YYYY (e.g. 15/01/1990).' },
+      { Column: 'Aadhaar / VID No.', Required: 'No', Notes: '12-digit Aadhaar or Virtual ID. Spaces/hyphens auto-stripped.' },
+      { Column: 'Nominee Name', Required: 'No', Notes: 'Nominee for the account.' },
       { Column: 'Join Date', Required: 'No', Notes: 'DD/MM/YYYY (e.g. 15/01/2026). Defaults to today.' },
       { Column: 'Status', Required: 'No', Notes: 'active, inactive, matured, withdrawn, closed. Defaults to active.' },
-      { Column: 'Password', Required: 'No', Notes: 'Min 6 chars. Leave blank to auto-generate during import.' },
-      { Column: 'Member ID', Required: 'No', Notes: 'Leave blank to auto-generate via the system rule.' },
+      { Column: 'INITIAL INVESTMENT', Required: 'For A/B', Notes: `One-time deposit in ${locale.currencySymbol}. For Cat A & B.` },
+      { Column: 'Monthly Installment', Required: 'For A/C', Notes: `Recurring monthly deposit in ${locale.currencySymbol}.` },
+      { Column: '— Password —', Required: 'Auto', Notes: 'Auto-generated as EUS@<seq> (e.g. EUS@001). Downloadable after import.' },
     ];
     const wsInstructions = XLSX.utils.json_to_sheet(instructions);
 
@@ -341,7 +384,7 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
         throw new Error('No data rows found. Make sure column headers are in the first row.');
       }
       // 2 = data starts on Excel row 2 (header is row 1).
-      const parsed = rawRows.map((r, i) => parseRow(r, i + 2, autoPasswords));
+      const parsed = rawRows.map((r, i) => parseRow(r, i + 2));
       setParsedRows(parsed);
       setStep('preview');
     } catch (err) {
@@ -368,7 +411,7 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
       const batch = validRows.slice(i, i + PARALLEL_BATCH_SIZE);
       const batchResults = await Promise.all(batch.map(async (row) => {
         try {
-          const resp = await callEdgeFunction<{ member_code: string }>('admin-create-member', {
+          const resp = await callEdgeFunction<{ member_code: string; password: string }>('admin-create-member', {
             full_name: row.full_name,
             phone: row.phone,
             member_code: row.member_code,
@@ -377,9 +420,15 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
             monthly_installment: row.monthly_installment,
             chosen_term_months: row.chosen_term_months,
             join_date: row.join_date,
-            password: row.password,
+            password: '__AUTO__', // server generates EUS@<seq>
+            address: row.address,
+            father_husband_name: row.father_husband_name,
+            gender: row.gender,
+            date_of_birth: row.date_of_birth,
+            aadhaar_vid: row.aadhaar_vid,
+            nominee_name: row.nominee_name,
           });
-          return { row, ok: true, member_code: resp.member_code } as ImportResult;
+          return { row, ok: true, member_code: resp.member_code, password: resp.password } as ImportResult;
         } catch (err) {
           return { row, ok: false, error: err instanceof Error ? err.message : 'unknown' } as ImportResult;
         }
@@ -398,9 +447,9 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
     const rows = results
       .filter((r) => r.ok)
       .map((r) => ({
-        'Full Name': r.row.full_name,
+        'Member Name': r.row.full_name,
         'Member ID': r.member_code ?? '',
-        'Password': r.row.password,
+        'Password': r.password ?? '',
         'Phone': r.row.phone ?? '',
       }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -414,16 +463,20 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
     const rows = results
       .filter((r) => !r.ok)
       .map((r) => ({
-        'Full Name': r.row.full_name,
-        'Phone': r.row.phone ?? '',
+        'MEMBER ID': r.row.member_code ?? '',
+        'MEMBER NAME': r.row.full_name,
         'Category': r.row.category,
-        'Initial Investment': r.row.initial_investment,
-        'Monthly Installment': r.row.monthly_installment ?? '',
-        'Term Months': r.row.chosen_term_months ?? '',
+        'Phone': r.row.phone ?? '',
+        'Address': r.row.address ?? '',
+        'Father/Husband Name': r.row.father_husband_name ?? '',
+        'Gender': r.row.gender ?? '',
+        'Date of Birth': r.row.date_of_birth ?? '',
+        'Aadhaar / VID No.': r.row.aadhaar_vid ?? '',
+        'Nominee Name': r.row.nominee_name ?? '',
         'Join Date': r.row.join_date,
         'Status': r.row.status,
-        'Password': r.row.password,
-        'Member ID': r.row.member_code ?? '',
+        'INITIAL INVESTMENT': r.row.initial_investment,
+        'Monthly Installment': r.row.monthly_installment ?? '',
         'Error': r.error ?? 'unknown',
       }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -462,6 +515,9 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                   <li>Upload the file — we'll show you a preview before anything is saved</li>
                   <li>Review warnings, then click Import. You'll get an Excel with all generated passwords.</li>
                 </ol>
+                <p className="mt-3 text-xs text-blue-700">
+                  <i className="fas fa-key mr-1"></i> Passwords auto-generate as <code className="bg-white px-1 rounded">EUS@&lt;seq&gt;</code> (e.g. <code className="bg-white px-1 rounded">EUS@001</code>) based on the member's sequence number.
+                </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
@@ -482,16 +538,6 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                   }}
                 />
               </div>
-
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={autoPasswords}
-                  onChange={(e) => setAutoPasswords(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                Auto-generate passwords for rows where the Password column is empty
-              </label>
 
               {fileError && (
                 <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
@@ -528,10 +574,11 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                       <th className="p-2 font-medium">Name</th>
                       <th className="p-2 font-medium">Cat</th>
                       <th className="p-2 font-medium">Phone</th>
+                      <th className="p-2 font-medium">DOB</th>
+                      <th className="p-2 font-medium">Aadhaar</th>
                       <th className="p-2 font-medium text-right">Initial</th>
                       <th className="p-2 font-medium text-right">Monthly</th>
-                      <th className="p-2 font-medium">Term</th>
-                      <th className="p-2 font-medium">Join Date</th>
+                      <th className="p-2 font-medium">Join</th>
                       <th className="p-2 font-medium">Notes</th>
                     </tr>
                   </thead>
@@ -559,9 +606,10 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                           <td className="p-2 text-gray-800">{row.full_name || <span className="text-gray-400 italic">missing</span>}</td>
                           <td className="p-2">{row.category}</td>
                           <td className="p-2 font-mono text-xs">{row.phone ?? '-'}</td>
+                          <td className="p-2 text-xs">{row.date_of_birth ?? '-'}</td>
+                          <td className="p-2 font-mono text-xs">{row.aadhaar_vid ? `••••${row.aadhaar_vid.slice(-4)}` : '-'}</td>
                           <td className="p-2 text-right">{row.initial_investment}</td>
                           <td className="p-2 text-right">{row.monthly_installment ?? '-'}</td>
-                          <td className="p-2">{row.chosen_term_months ?? '-'}</td>
                           <td className="p-2 text-xs">{row.join_date}</td>
                           <td className="p-2 text-xs text-gray-600">
                             {row.errors.length > 0 && (
@@ -569,9 +617,6 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                             )}
                             {row.errors.length === 0 && row.warnings.length > 0 && (
                               <span className="text-yellow-700">{row.warnings.join('; ')}</span>
-                            )}
-                            {row.generatedPassword && (
-                              <span className="text-blue-700 block">Password will be auto-generated</span>
                             )}
                           </td>
                         </tr>

@@ -9,6 +9,10 @@
 //   - Service role key (from env) is used internally to call auth.admin APIs.
 //   - The synthetic login email is `<sanitized_code>@members.local`.
 //
+// Password:
+//   - If body.password is empty string or '__AUTO__', the function generates
+//     `EUS@<seq>` from the trailing digits of the member_code.
+//
 // Deploy:
 //   supabase functions deploy admin-create-member --no-verify-jwt=false
 // ---------------------------------------------------------------------------
@@ -36,12 +40,31 @@ type CreateMemberPayload = {
   monthly_installment?: number | null;
   chosen_term_months?: number | null;
   join_date?: string;
-  password: string;
+  password: string; // '__AUTO__' or '' triggers auto-generation
+  // Optional personal-info fields (added with profiles migration)
+  address?: string | null;
+  father_husband_name?: string | null;
+  gender?: string | null;
+  date_of_birth?: string | null;
+  aadhaar_vid?: string | null;
+  nominee_name?: string | null;
 };
 
 function syntheticEmail(memberCode: string): string {
   const sanitized = memberCode.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase();
   return `${sanitized}@${MEMBER_EMAIL_DOMAIN}`;
+}
+
+function passwordFromCode(code: string): string {
+  // Extract trailing digit sequence — works for "EUS/052026/C/001" → "001"
+  // and falls back to any other digit pattern at the end of the string.
+  const match = code.match(/(\d+)\s*$/);
+  if (match) {
+    return `EUS@${match[1]}`;
+  }
+  // Custom code without digits — sanitize last 6 chars as a fallback.
+  const sanitized = code.replace(/[^a-zA-Z0-9]/g, '').slice(-6) || '000';
+  return `EUS@${sanitized}`;
 }
 
 serve(async (req) => {
@@ -100,14 +123,15 @@ serve(async (req) => {
     });
   }
 
-  if (!body.full_name || !body.category || !body.password) {
+  if (!body.full_name || !body.category) {
     return new Response(
-      JSON.stringify({ error: 'full_name, category, and password are required' }),
+      JSON.stringify({ error: 'full_name and category are required' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 
-  if (body.password.length < 6) {
+  const autoPassword = !body.password || body.password === '__AUTO__';
+  if (!autoPassword && body.password.length < 6) {
     return new Response(
       JSON.stringify({ error: 'Password must be at least 6 characters' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -142,11 +166,12 @@ serve(async (req) => {
   }
 
   const email = syntheticEmail(codeForEmail);
+  const finalPassword = autoPassword ? passwordFromCode(codeForEmail) : body.password;
 
   // 1. Create auth user (service role, no email confirmation needed).
   let { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
-    password: body.password,
+    password: finalPassword,
     email_confirm: true,
     user_metadata: { full_name: body.full_name, member_code: codeForEmail },
   });
@@ -170,7 +195,7 @@ serve(async (req) => {
     // Retry
     const retry = await admin.auth.admin.createUser({
       email,
-      password: body.password,
+      password: finalPassword,
       email_confirm: true,
       user_metadata: { full_name: body.full_name, member_code: codeForEmail },
     });
@@ -187,14 +212,22 @@ serve(async (req) => {
 
   const newId = created.user.id;
 
-  // 2. Insert profile (role=member).
-  const { error: profileErr } = await admin.from('profiles').insert({
+  // 2. Insert profile (role=member) including any optional personal-info fields.
+  const profileInsert: Record<string, unknown> = {
     id: newId,
     full_name: body.full_name,
     phone: body.phone || null,
     photo_url: body.photo_url || null,
     role: 'member',
-  });
+  };
+  if (body.address !== undefined) profileInsert.address = body.address || null;
+  if (body.father_husband_name !== undefined) profileInsert.father_husband_name = body.father_husband_name || null;
+  if (body.gender !== undefined) profileInsert.gender = body.gender || null;
+  if (body.date_of_birth !== undefined) profileInsert.date_of_birth = body.date_of_birth || null;
+  if (body.aadhaar_vid !== undefined) profileInsert.aadhaar_vid = body.aadhaar_vid || null;
+  if (body.nominee_name !== undefined) profileInsert.nominee_name = body.nominee_name || null;
+
+  const { error: profileErr } = await admin.from('profiles').insert(profileInsert);
   if (profileErr) {
     await admin.auth.admin.deleteUser(newId);
     return new Response(JSON.stringify({ error: `Profile insert failed: ${profileErr.message}` }), {
@@ -220,6 +253,7 @@ serve(async (req) => {
 
   if (memberErr || !memberRow) {
     await admin.auth.admin.deleteUser(newId);
+    await admin.from('profiles').delete().eq('id', newId);
     return new Response(JSON.stringify({ error: `Member insert failed: ${memberErr?.message}` }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -231,6 +265,7 @@ serve(async (req) => {
       id: newId,
       member_code: memberRow.member_code,
       login_email: email,
+      password: finalPassword,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
   );
