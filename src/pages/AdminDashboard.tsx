@@ -10,6 +10,7 @@ import { Settings } from './admin/Settings';
 import { Reports } from './admin/Reports';
 import { MemberProfile } from './admin/MemberProfile';
 import { Investments } from './admin/Investments';
+import { ProductEmi } from './admin/ProductEmi';
 
 export function AdminDashboard() {
   const { logout } = useAuth();
@@ -42,6 +43,7 @@ export function AdminDashboard() {
     { path: '/admin/transactions', label: 'Transactions', icon: 'fas fa-rupee-sign' },
     { path: '/admin/loans', label: 'Loans', icon: 'fas fa-hand-holding-usd' },
     { path: '/admin/investments', label: 'Investments', icon: 'fas fa-chart-line' },
+    { path: '/admin/emi', label: 'Product EMI', icon: 'fas fa-mobile-alt' },
     { path: '/admin/reports', label: 'Reports', icon: 'fas fa-chart-bar' },
     { path: '/admin/settings', label: 'Settings', icon: 'fas fa-cog' },
   ];
@@ -156,6 +158,7 @@ export function AdminDashboard() {
               <Route path="/transactions/*" element={<Transactions />} />
               <Route path="/loans/*" element={<Loans />} />
               <Route path="/investments/*" element={<Investments />} />
+              <Route path="/emi/*" element={<ProductEmi />} />
               <Route path="/reports/*" element={<Reports />} />
               <Route path="/settings/*" element={<Settings />} />
             </Routes>
