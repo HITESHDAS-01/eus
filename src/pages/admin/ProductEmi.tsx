@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { Vendors } from './emi/Vendors';
 import { EmiCustomers } from './emi/EmiCustomers';
 import { EmiCustomerProfile } from './emi/EmiCustomerProfile';
+import { EmiLoans } from './emi/EmiLoans';
 
 // ---------------------------------------------------------------------------
 // Product EMI — parent page for the electronics-finance feature.
@@ -73,7 +74,7 @@ function ProductEmiHome() {
       {/* Tab content */}
       <div>
         {activeTab === 'dashboard' && <ComingSoon label="Dashboard" />}
-        {activeTab === 'loans'     && <ComingSoon label="EMI Loans" />}
+        {activeTab === 'loans'     && <EmiLoans />}
         {activeTab === 'customers' && <EmiCustomers />}
         {activeTab === 'vendors'   && <Vendors />}
       </div>
