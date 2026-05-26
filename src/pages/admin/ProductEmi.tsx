@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Vendors } from './emi/Vendors';
+import { EmiCustomers } from './emi/EmiCustomers';
 
 // ---------------------------------------------------------------------------
 // Product EMI — parent page for the electronics-finance feature.
@@ -58,7 +59,7 @@ export function ProductEmi() {
       <div>
         {activeTab === 'dashboard' && <ComingSoon label="Dashboard" />}
         {activeTab === 'loans'     && <ComingSoon label="EMI Loans" />}
-        {activeTab === 'customers' && <ComingSoon label="EMI Customers" />}
+        {activeTab === 'customers' && <EmiCustomers />}
         {activeTab === 'vendors'   && <Vendors />}
       </div>
     </div>
