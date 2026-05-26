@@ -51,7 +51,7 @@ CREATE POLICY "emi_customers_admin" ON emi_customers
   USING (public.is_admin(auth.uid()))
   WITH CHECK (public.is_admin(auth.uid()));
 
--- Auto-generate customer_code in format EUS/MMYYYY/NNN
+-- Auto-generate customer_code in format EUS/EMI/C/MMYYYY/NNN
 CREATE OR REPLACE FUNCTION set_emi_customer_code() RETURNS TRIGGER AS $$
 DECLARE
   v_year_month TEXT;
@@ -62,7 +62,7 @@ BEGIN
     SELECT COUNT(*) + 1 INTO v_count
     FROM emi_customers
     WHERE to_char(created_at, 'MMYYYY') = v_year_month;
-    NEW.customer_code := 'EUS/' || v_year_month || '/' || LPAD(v_count::text, 3, '0');
+    NEW.customer_code := 'EUS/EMI/C/' || v_year_month || '/' || LPAD(v_count::text, 3, '0');
   END IF;
   RETURN NEW;
 END;
@@ -116,7 +116,7 @@ CREATE POLICY "emi_loans_admin" ON emi_loans
   USING (public.is_admin(auth.uid()))
   WITH CHECK (public.is_admin(auth.uid()));
 
--- Auto-generate loan_code in format EUS/MMYYYY/NNN
+-- Auto-generate loan_code in format EUS/EMI/L/MMYYYY/NNN
 CREATE OR REPLACE FUNCTION set_emi_loan_code() RETURNS TRIGGER AS $$
 DECLARE
   v_year_month TEXT;
@@ -127,7 +127,7 @@ BEGIN
     SELECT COUNT(*) + 1 INTO v_count
     FROM emi_loans
     WHERE to_char(disbursed_date, 'MMYYYY') = v_year_month;
-    NEW.loan_code := 'EUS/' || v_year_month || '/' || LPAD(v_count::text, 3, '0');
+    NEW.loan_code := 'EUS/EMI/L/' || v_year_month || '/' || LPAD(v_count::text, 3, '0');
   END IF;
   RETURN NEW;
 END;
