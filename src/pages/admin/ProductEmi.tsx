@@ -5,6 +5,7 @@ import { EmiCustomers } from './emi/EmiCustomers';
 import { EmiCustomerProfile } from './emi/EmiCustomerProfile';
 import { EmiLoans } from './emi/EmiLoans';
 import { EmiLoanProfile } from './emi/EmiLoanProfile';
+import { EmiDashboard } from './emi/EmiDashboard';
 
 // ---------------------------------------------------------------------------
 // Product EMI — parent page for the electronics-finance feature.
@@ -42,7 +43,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 ];
 
 function ProductEmiHome() {
-  const [activeTab, setActiveTab] = useState<Tab>('customers');
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
 
   return (
     <div className="p-6 space-y-6">
@@ -75,7 +76,7 @@ function ProductEmiHome() {
 
       {/* Tab content */}
       <div>
-        {activeTab === 'dashboard' && <ComingSoon label="Dashboard" />}
+        {activeTab === 'dashboard' && <EmiDashboard />}
         {activeTab === 'loans'     && <EmiLoans />}
         {activeTab === 'customers' && <EmiCustomers />}
         {activeTab === 'vendors'   && <Vendors />}
@@ -84,16 +85,3 @@ function ProductEmiHome() {
   );
 }
 
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
-      <div className="w-16 h-16 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] mx-auto mb-4">
-        <i className="fas fa-tools text-2xl"></i>
-      </div>
-      <h3 className="text-lg font-bold text-gray-800 mb-2">{label} — coming soon</h3>
-      <p className="text-sm text-gray-500 max-w-sm mx-auto">
-        This tab is being built. For now you can manage <strong>Vendors</strong> and <strong>Customers</strong>.
-      </p>
-    </div>
-  );
-}
