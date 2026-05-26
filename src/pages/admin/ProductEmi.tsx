@@ -1,18 +1,33 @@
 import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { Vendors } from './emi/Vendors';
 import { EmiCustomers } from './emi/EmiCustomers';
+import { EmiCustomerProfile } from './emi/EmiCustomerProfile';
 
 // ---------------------------------------------------------------------------
 // Product EMI — parent page for the electronics-finance feature.
-// Sub-tabs: Dashboard | Loans | Customers | Vendors
+//
+// Routing (nested under /admin/emi):
+//   /                       → tabbed dashboard (Dashboard | Loans | Customers | Vendors)
+//   /customers/:id          → full EMI customer profile page
 //
 // Currently implemented:
 //   - Vendors (CRUD)
+//   - EMI Customers (CRUD)
+//   - EMI Customer Profile (read-only detail page)
 // Coming next:
-//   - EMI Customers (CRUD with KYC)
 //   - EMI Loans (create, view, record payment, history)
 //   - Dashboard (KPIs: disbursed, outstanding, collected, overdue)
 // ---------------------------------------------------------------------------
+
+export function ProductEmi() {
+  return (
+    <Routes>
+      <Route path="/" element={<ProductEmiHome />} />
+      <Route path="/customers/:id" element={<EmiCustomerProfile />} />
+    </Routes>
+  );
+}
 
 type Tab = 'dashboard' | 'loans' | 'customers' | 'vendors';
 
@@ -23,8 +38,8 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'vendors',   label: 'Vendors',   icon: 'fas fa-store' },
 ];
 
-export function ProductEmi() {
-  const [activeTab, setActiveTab] = useState<Tab>('vendors');
+function ProductEmiHome() {
+  const [activeTab, setActiveTab] = useState<Tab>('customers');
 
   return (
     <div className="p-6 space-y-6">
@@ -74,7 +89,7 @@ function ComingSoon({ label }: { label: string }) {
       </div>
       <h3 className="text-lg font-bold text-gray-800 mb-2">{label} — coming soon</h3>
       <p className="text-sm text-gray-500 max-w-sm mx-auto">
-        This tab is being built. For now you can manage <strong>Vendors</strong>.
+        This tab is being built. For now you can manage <strong>Vendors</strong> and <strong>Customers</strong>.
       </p>
     </div>
   );

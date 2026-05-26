@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../lib/supabase';
 import { Button, Input, Label } from '../../../components/ui/basic';
 import { safeFormatDate } from '../../../lib/utils';
@@ -29,6 +30,7 @@ type Customer = {
 type SortKey = 'created_desc' | 'created_asc' | 'name_asc' | 'name_desc' | 'code_asc' | 'code_desc';
 
 export function EmiCustomers() {
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -272,7 +274,11 @@ export function EmiCustomers() {
                 </td></tr>
               ) : (
                 filtered.map(c => (
-                  <tr key={c.id} className="hover:bg-gray-50">
+                  <tr
+                    key={c.id}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/admin/emi/customers/${c.id}`)}
+                  >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-[#1e5a48]/10 flex items-center justify-center text-[#1e5a48] overflow-hidden border border-[#1e5a48]/10">
@@ -291,7 +297,7 @@ export function EmiCustomers() {
                     <td className="p-4 font-mono text-xs">{c.phone || <span className="text-gray-400">—</span>}</td>
                     <td className="p-4 font-mono text-xs">{c.aadhaar_vid ? `••••${c.aadhaar_vid.slice(-4)}` : <span className="text-gray-400">—</span>}</td>
                     <td className="p-4 text-xs text-gray-600">{safeFormatDate(c.created_at)}</td>
-                    <td className="p-4 text-right space-x-3">
+                    <td className="p-4 text-right space-x-3" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => openEdit(c)} className="text-[#f7b05e] hover:text-[#e09d3e] text-sm" title="Edit">
                         <i className="fas fa-edit"></i>
                       </button>
