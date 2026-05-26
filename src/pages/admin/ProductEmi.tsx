@@ -4,6 +4,7 @@ import { Vendors } from './emi/Vendors';
 import { EmiCustomers } from './emi/EmiCustomers';
 import { EmiCustomerProfile } from './emi/EmiCustomerProfile';
 import { EmiLoans } from './emi/EmiLoans';
+import { EmiLoanProfile } from './emi/EmiLoanProfile';
 
 // ---------------------------------------------------------------------------
 // Product EMI — parent page for the electronics-finance feature.
@@ -26,6 +27,7 @@ export function ProductEmi() {
     <Routes>
       <Route path="/" element={<ProductEmiHome />} />
       <Route path="/customers/:id" element={<EmiCustomerProfile />} />
+      <Route path="/loans/:id" element={<EmiLoanProfile />} />
     </Routes>
   );
 }
