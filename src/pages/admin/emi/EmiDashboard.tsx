@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { format, addMonths, differenceInCalendarDays, startOfMonth, endOfMonth } from 'date-fns';
 import { supabase } from '../../../lib/supabase';
 import { formatCurrency, safeFormatDate } from '../../../lib/utils';
+import { Button } from '../../../components/ui/basic';
+import { branding } from '../../../config/branding';
 
 // ---------------------------------------------------------------------------
 // EMI Dashboard — operational view of the Product EMI portfolio.
@@ -174,6 +176,67 @@ export function EmiDashboard() {
   }
   overdueRows.sort((a, b) => b.daysOverdue - a.daysOverdue);
 
+  // -------- Excel export helpers --------------------------------------------
+  const downloadOutstandingReport = async () => {
+    const XLSX = await import('xlsx');
+    const active = loans.filter(l => l.status === 'active');
+    if (active.length === 0) return;
+
+    const rows = active.map(l => {
+      // Find next pending EMI to surface a due date in the report.
+      const first = new Date(l.first_emi_date);
+      const loanPays = payments.filter(p => p.loan_id === l.id);
+      let nextDueStr = '';
+      for (let i = 0; i < l.tenure_months; i++) {
+        const due = addMonths(first, i);
+        const dueKey = format(due, 'yyyy-MM');
+        const matched = loanPays.some(p => format(new Date(p.due_date), 'yyyy-MM') === dueKey);
+        if (!matched) { nextDueStr = format(due, 'dd MMM yyyy'); break; }
+      }
+      const paidAmount = loanPays.reduce((s, p) => s + Number(p.amount_paid), 0);
+      return {
+        'Loan Code':       l.loan_code,
+        'Customer':        l.emi_customers?.full_name || '',
+        'Customer Code':   l.emi_customers?.customer_code || '',
+        'Product':         l.product_name,
+        'Financed (₹)':    Number(l.financed_amount),
+        'EMI (₹)':         Number(l.emi_amount),
+        'Tenure (months)': Number(l.tenure_months),
+        'Paid So Far (₹)': Math.round(paidAmount * 100) / 100,
+        'Outstanding (₹)': Number(l.remaining_principal),
+        'Next Due':        nextDueStr,
+        'First EMI Date':  format(new Date(l.first_emi_date), 'dd MMM yyyy'),
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Outstanding');
+    XLSX.writeFile(wb, `${branding.orgShort}_EMI_Outstanding_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
+  const downloadOverdueReport = async () => {
+    const XLSX = await import('xlsx');
+    if (overdueRows.length === 0) return;
+
+    const rows = overdueRows.map(r => ({
+      'Customer':         r.customerName,
+      'Customer Code':    r.customerCode,
+      'Loan Code':        r.loanCode,
+      'Product':          r.productName,
+      'EMI (₹)':          r.emiAmount,
+      'Unpaid EMIs':      r.unpaidCount,
+      'Overdue Amt (₹)':  r.overdueAmount,
+      'Earliest Due':     format(r.earliestDueDate, 'dd MMM yyyy'),
+      'Days Overdue':     r.daysOverdue,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Overdue');
+    XLSX.writeFile(wb, `${branding.orgShort}_EMI_Overdue_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex justify-center items-center h-64">
@@ -207,6 +270,28 @@ export function EmiDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Top action bar */}
+      <div className="flex flex-wrap gap-2 justify-end">
+        <Button
+          variant="outline"
+          onClick={downloadOutstandingReport}
+          disabled={activeCount === 0}
+          className="gap-2"
+          title="Download all active loans with their outstanding balance"
+        >
+          <i className="fas fa-file-excel"></i> Outstanding Report
+        </Button>
+        <Button
+          variant="outline"
+          onClick={downloadOverdueReport}
+          disabled={overdueRows.length === 0}
+          className="gap-2 border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+          title="Download list of overdue EMIs for follow-up"
+        >
+          <i className="fas fa-file-excel"></i> Overdue Report
+        </Button>
+      </div>
+
       {/* Row 1 — Headline KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="fas fa-rupee-sign"     color="bg-blue-100 text-blue-700"     label="Total Disbursed"     value={formatCurrency(totalDisbursed)} />

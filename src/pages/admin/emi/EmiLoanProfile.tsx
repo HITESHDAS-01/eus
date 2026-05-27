@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase';
 import { Button, Input, Label } from '../../../components/ui/basic';
 import { formatCurrency, safeFormatDate } from '../../../lib/utils';
 import { useAuth } from '../../../lib/AuthContext';
+import { EmiLoanStatement } from './EmiLoanStatement';
 
 // ---------------------------------------------------------------------------
 // EMI Loan Profile — single-loan detail page with payment + foreclosure flow.
@@ -44,7 +45,7 @@ type Loan = {
   status: 'active' | 'closed' | 'defaulted' | 'foreclosed';
   notes: string | null;
   created_at: string;
-  emi_customers: { id: string; customer_code: string; full_name: string; phone: string | null; photo_url: string | null } | null;
+  emi_customers: { id: string; customer_code: string; full_name: string; phone: string | null; photo_url: string | null; address: string | null } | null;
   vendors: { id: string; name: string; address: string | null } | null;
 };
 
@@ -98,6 +99,9 @@ export function EmiLoanProfile() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Statement modal
+  const [isStatementOpen, setIsStatementOpen] = useState(false);
+
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => { if (id) fetchData(id); }, [id]);
@@ -109,7 +113,7 @@ export function EmiLoanProfile() {
       const [loanRes, payRes, settingsRes] = await Promise.all([
         supabase
           .from('emi_loans')
-          .select('*, emi_customers(id, customer_code, full_name, phone, photo_url), vendors(id, name, address)')
+          .select('*, emi_customers(id, customer_code, full_name, phone, photo_url, address), vendors(id, name, address)')
           .eq('id', loanId)
           .single(),
         supabase
@@ -385,6 +389,9 @@ export function EmiLoanProfile() {
                 </Button>
               </>
             )}
+            <Button variant="outline" onClick={() => setIsStatementOpen(true)} className="gap-2">
+              <i className="fas fa-file-pdf"></i> Statement
+            </Button>
             <Button variant="outline" onClick={() => { setDeleteError(''); setIsDeleteOpen(true); }} className="gap-2 border-red-300 text-red-600 hover:bg-red-50">
               <i className="fas fa-trash"></i> Delete
             </Button>
@@ -701,6 +708,11 @@ export function EmiLoanProfile() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ============ Statement Modal ============ */}
+      {isStatementOpen && (
+        <EmiLoanStatement loan={loan} payments={payments} onClose={() => setIsStatementOpen(false)} />
       )}
 
       {/* ============ Delete Modal ============ */}
