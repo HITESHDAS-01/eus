@@ -471,6 +471,78 @@ CREATE POLICY emi_customers_admin ON emi_customers FOR ALL TO authenticated USIN
 CREATE POLICY emi_loans_admin     ON emi_loans     FOR ALL TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
 CREATE POLICY emi_payments_admin  ON emi_payments  FOR ALL TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
 
+-- ---------------------------------------------------------------------------
+-- External-investments + external-loans tables
+-- ---------------------------------------------------------------------------
+-- Used by the Investments and ExternalLoans admin pages. These track money
+-- the cooperative invests externally (e.g. business deposits) and loans the
+-- cooperative gives to non-members (with their own bookkeeping).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS external_investments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name              TEXT NOT NULL,
+  type              TEXT NOT NULL,
+  principal_amount  NUMERIC(14,2) NOT NULL,
+  expected_roi      NUMERIC(6,2),
+  start_date        DATE NOT NULL,
+  maturity_date     DATE,
+  payout_frequency  TEXT,
+  status            TEXT NOT NULL DEFAULT 'Active',
+  notes             TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS investment_returns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  investment_id UUID NOT NULL REFERENCES external_investments(id) ON DELETE CASCADE,
+  amount        NUMERIC(14,2) NOT NULL,
+  return_date   DATE NOT NULL,
+  description   TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_inv_returns_investment ON investment_returns(investment_id);
+
+CREATE TABLE IF NOT EXISTS ext_loans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_name     TEXT NOT NULL,
+  phone             TEXT,
+  address           TEXT,
+  id_proof          TEXT,
+  principal_amount  NUMERIC(14,2) NOT NULL,
+  interest_rate     NUMERIC(6,2)  NOT NULL,
+  start_date        DATE NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ext_loan_txns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  loan_id        UUID NOT NULL REFERENCES ext_loans(id) ON DELETE CASCADE,
+  type           TEXT NOT NULL,        -- 'Interest Due' | 'Interest Paid' | 'Principal Paid'
+  amount         NUMERIC(14,2) NOT NULL,
+  txn_date       DATE NOT NULL,
+  receipt_number TEXT,
+  notes          TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ext_loan_txns_loan ON ext_loan_txns(loan_id);
+
+-- RLS — admin-only for all four
+ALTER TABLE external_investments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE investment_returns   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ext_loans            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ext_loan_txns        ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS ext_investments_admin    ON external_investments;
+DROP POLICY IF EXISTS investment_returns_admin ON investment_returns;
+DROP POLICY IF EXISTS ext_loans_admin          ON ext_loans;
+DROP POLICY IF EXISTS ext_loan_txns_admin      ON ext_loan_txns;
+CREATE POLICY ext_investments_admin    ON external_investments FOR ALL TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
+CREATE POLICY investment_returns_admin ON investment_returns   FOR ALL TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
+CREATE POLICY ext_loans_admin          ON ext_loans            FOR ALL TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
+CREATE POLICY ext_loan_txns_admin      ON ext_loan_txns        FOR ALL TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
+
 -- =============================================================================
 -- DONE. Now run 02-storage.sql and 03-initial-data.sql.
 -- =============================================================================
