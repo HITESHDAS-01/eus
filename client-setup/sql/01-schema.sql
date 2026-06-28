@@ -217,10 +217,8 @@ CREATE INDEX IF NOT EXISTS idx_emi_payments_loan ON emi_payments(loan_id);
 -- prevent race conditions during parallel bulk imports.
 
 CREATE TABLE IF NOT EXISTS member_code_counters (
-    category   TEXT NOT NULL,
-    month_year TEXT NOT NULL,
-    seq        INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (category, month_year)
+    category TEXT PRIMARY KEY,
+    seq      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE OR REPLACE FUNCTION set_member_code() RETURNS TRIGGER AS $$
@@ -236,10 +234,9 @@ BEGIN
     v_year_month := to_char(COALESCE(NEW.join_date, CURRENT_DATE), 'MMYYYY');
 
     LOOP
-      -- Atomic increment: INSERT a new row or INCREMENT the existing one.
-      INSERT INTO member_code_counters (category, month_year, seq)
-      VALUES (NEW.category, v_year_month, 1)
-      ON CONFLICT (category, month_year)
+      INSERT INTO member_code_counters (category, seq)
+      VALUES (NEW.category, 1)
+      ON CONFLICT (category)
       DO UPDATE SET seq = member_code_counters.seq + 1
       RETURNING seq INTO v_seq;
 
