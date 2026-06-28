@@ -39,7 +39,7 @@ type ImportResult = {
   error?: string;
 };
 
-const PARALLEL_BATCH_SIZE = 5;
+const PARALLEL_BATCH_SIZE = 1;
 
 async function callEdgeFunction<T>(name: string, payload: unknown): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
