@@ -626,6 +626,7 @@ export function Loans() {
       )}
 
       {/* Active Loans Summary Table */}
+      {activeTab !== 'history' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
         <div className="p-6 border-b border-gray-100">
           <h3 className="text-lg font-bold text-gray-800">Active Loans Summary</h3>
@@ -697,6 +698,7 @@ export function Loans() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Edit Loan Modal */}
       {editingLoan && (
