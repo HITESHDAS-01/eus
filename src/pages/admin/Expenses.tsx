@@ -101,14 +101,14 @@ export function Expenses() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-[#fdecea] rounded-3xl p-6 border border-[#f0cac8]">
-          <p className="text-sm text-[#b55a5a] font-medium mb-1">This Month</p>
-          <p className="text-3xl font-bold text-gray-800">{formatCurrency(totalMonth)}</p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        <div className="bg-[#fdecea] rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-[#f0cac8]">
+          <p className="text-xs sm:text-sm text-[#b55a5a] font-medium mb-1">This Month</p>
+          <p className="text-xl sm:text-3xl font-bold text-gray-800">{formatCurrency(totalMonth)}</p>
         </div>
-        <div className="bg-[#e8f5f1] rounded-3xl p-6 border border-[#c8e6dd]">
-          <p className="text-sm text-[#3d7a68] font-medium mb-1">All Time</p>
-          <p className="text-3xl font-bold text-gray-800">{formatCurrency(totalAll)}</p>
+        <div className="bg-[#e8f5f1] rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-[#c8e6dd]">
+          <p className="text-xs sm:text-sm text-[#3d7a68] font-medium mb-1">All Time</p>
+          <p className="text-xl sm:text-3xl font-bold text-gray-800">{formatCurrency(totalAll)}</p>
         </div>
       </div>
 
