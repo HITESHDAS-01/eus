@@ -19,26 +19,14 @@ import { branding, locale } from '../../config/branding';
 // ---------------------------------------------------------------------------
 
 type Category = 'A' | 'B' | 'C';
-type Status = 'active' | 'inactive' | 'matured' | 'withdrawn' | 'closed';
 
 type ParsedRow = {
-  rowNumber: number; // 1-based row number from the source sheet (for error messages)
+  rowNumber: number;
   full_name: string;
-  phone: string | null;
-  member_code: string | null;
   category: Category;
-  initial_investment: number;
-  monthly_installment: number | null;
-  chosen_term_months: number | null;
-  status: Status;
-  join_date: string; // yyyy-MM-dd
-  // Optional personal info
   address: string | null;
-  father_husband_name: string | null;
-  gender: string | null;
-  date_of_birth: string | null; // yyyy-MM-dd
-  aadhaar_vid: string | null;
-  nominee_name: string | null;
+  join_date: string;
+  monthly_installment: number;
   warnings: string[];
   errors: string[];
 };
@@ -79,21 +67,10 @@ async function callEdgeFunction<T>(name: string, payload: unknown): Promise<T> {
 // ---------------------------------------------------------------------------
 const COL = {
   full_name: ['member name', 'full name', 'name', 'নাম'],
-  phone: ['phone', 'mobile', 'mobile number', 'phone number', 'ফোন'],
-  member_code: ['member id', 'member code', 'id', 'code'],
   category: ['category', 'cat', 'class', 'শ্রেণী'],
-  initial_investment: ['initial investment', 'investment', 'principal', 'deposit'],
-  monthly_installment: ['monthly installment', 'instalment', 'installment', 'monthly'],
-  chosen_term_months: ['term', 'term months', 'duration', 'months'],
-  status: ['status', 'state'],
-  join_date: ['join date', 'joining date', 'date', 'start date'],
-  // New personal-info fields
   address: ['address', 'addr', 'residence'],
-  father_husband_name: ['father/husband name', 'father / husband name', 'father husband name', 'father name', 'husband name', 'guardian', 'guardian name', 's/o', 'd/o', 'w/o'],
-  gender: ['gender', 'sex'],
-  date_of_birth: ['date of birth', 'dob', 'birth date', 'birthday'],
-  aadhaar_vid: ['aadhaar / vid no.', 'aadhaar / vid no', 'aadhaar/vid no.', 'aadhaar/vid no', 'aadhaar / vid', 'aadhaar/vid', 'aadhaar no.', 'aadhaar no', 'aadhaar number', 'aadhaar', 'aadhar', 'vid', 'vid no', 'vid number'],
-  nominee_name: ['nominee name', 'nominee'],
+  join_date: ['join date', 'joining date', 'date', 'start date'],
+  monthly_installment: ['monthly installment', 'instalment', 'installment', 'monthly'],
 };
 
 function findColumn(row: Record<string, unknown>, aliases: string[]): unknown {
@@ -139,33 +116,6 @@ function parseExcelDate(value: unknown): string | null {
   return null;
 }
 
-function normalizePhone(value: unknown): string | null {
-  if (value == null || value === '') return null;
-  const digits = String(value).replace(/\D+/g, '');
-  if (digits.length === 0) return null;
-  // Strip leading country code "91" if the result is 10+ digits (common
-  // Indian format "+91 98765 43210" → "9876543210").
-  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
-  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
-  return digits;
-}
-
-function normalizeGender(value: unknown): string | null {
-  if (value == null || value === '') return null;
-  const s = String(value).trim().toLowerCase();
-  if (['m', 'male', 'man'].includes(s)) return 'Male';
-  if (['f', 'female', 'woman'].includes(s)) return 'Female';
-  if (['o', 'other'].includes(s)) return 'Other';
-  // Pass through as-is (capitalized) for anything else
-  return String(value).trim();
-}
-
-function normalizeAadhaar(value: unknown): string | null {
-  if (value == null || value === '') return null;
-  // Strip spaces/hyphens but keep digits and 'X' (masked digits).
-  return String(value).replace(/[\s-]/g, '').trim() || null;
-}
-
 function parseRow(raw: Record<string, unknown>, rowNumber: number): ParsedRow {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -173,45 +123,17 @@ function parseRow(raw: Record<string, unknown>, rowNumber: number): ParsedRow {
   const full_name = String(findColumn(raw, COL.full_name) ?? '').trim();
   if (!full_name) errors.push('Member name is required');
 
-  const phone = normalizePhone(findColumn(raw, COL.phone));
-  if (phone && phone.length < 7) warnings.push(`Phone "${phone}" looks too short`);
-
-  const codeRaw = findColumn(raw, COL.member_code);
-  const member_code = codeRaw ? String(codeRaw).trim() : null;
-
   const catRaw = String(findColumn(raw, COL.category) ?? 'C').trim().toUpperCase();
-  const category: Category = (catRaw === 'A' || catRaw === 'B' || catRaw === 'C') ? catRaw : 'C';
-  if (!['A', 'B', 'C'].includes(catRaw)) warnings.push(`Unknown category "${catRaw}", defaulted to C`);
-
-  const initial_investment = Number(findColumn(raw, COL.initial_investment) ?? 0);
-  if (Number.isNaN(initial_investment) || initial_investment < 0) {
-    errors.push('Initial investment must be a non-negative number');
-  }
+  const category: Category = catRaw === 'C' ? 'C' : 'C';
+  if (catRaw !== 'C') errors.push(`Category "${catRaw}" is not supported in bulk import. Only Category C can be bulk imported.`);
 
   const installmentRaw = findColumn(raw, COL.monthly_installment);
   const monthly_installment = installmentRaw != null && installmentRaw !== ''
     ? Number(installmentRaw)
-    : (category === 'A' ? 1000 : category === 'C' ? 100 : null);
-  if (monthly_installment !== null && (Number.isNaN(monthly_installment) || monthly_installment < 0)) {
+    : 100;
+  if (Number.isNaN(monthly_installment) || monthly_installment < 0) {
     errors.push('Monthly installment must be a non-negative number');
   }
-
-  const termRaw = findColumn(raw, COL.chosen_term_months);
-  let chosen_term_months: number | null = termRaw != null && termRaw !== '' ? Number(termRaw) : null;
-  if (chosen_term_months !== null && (Number.isNaN(chosen_term_months) || chosen_term_months < 0)) {
-    errors.push('Term months must be a non-negative number');
-    chosen_term_months = null;
-  }
-  // Cat B is always 36 months by business rule.
-  if (category === 'B') chosen_term_months = 36;
-  if (chosen_term_months == null) {
-    chosen_term_months = category === 'C' ? 24 : (category === 'A' ? 36 : null);
-  }
-
-  const statusRaw = String(findColumn(raw, COL.status) ?? 'active').trim().toLowerCase();
-  const validStatuses: Status[] = ['active', 'inactive', 'matured', 'withdrawn', 'closed'];
-  const status: Status = (validStatuses as string[]).includes(statusRaw) ? (statusRaw as Status) : 'active';
-  if (!(validStatuses as string[]).includes(statusRaw)) warnings.push(`Unknown status "${statusRaw}", defaulted to active`);
 
   const join_date_raw = findColumn(raw, COL.join_date);
   const join_date = parseExcelDate(join_date_raw) ?? format(new Date(), 'yyyy-MM-dd');
@@ -219,46 +141,16 @@ function parseRow(raw: Record<string, unknown>, rowNumber: number): ParsedRow {
     warnings.push(`Could not parse join date "${join_date_raw}", using today`);
   }
 
-  // New personal info fields
   const addressRaw = findColumn(raw, COL.address);
   const address = addressRaw != null && addressRaw !== '' ? String(addressRaw).trim() : null;
-
-  const fhnRaw = findColumn(raw, COL.father_husband_name);
-  const father_husband_name = fhnRaw != null && fhnRaw !== '' ? String(fhnRaw).trim() : null;
-
-  const gender = normalizeGender(findColumn(raw, COL.gender));
-
-  const dobRaw = findColumn(raw, COL.date_of_birth);
-  const date_of_birth = dobRaw ? parseExcelDate(dobRaw) : null;
-  if (dobRaw && !date_of_birth) {
-    warnings.push(`Could not parse date of birth "${dobRaw}", skipped`);
-  }
-
-  const aadhaar_vid = normalizeAadhaar(findColumn(raw, COL.aadhaar_vid));
-  if (aadhaar_vid && !/^\d{12}$/.test(aadhaar_vid)) {
-    warnings.push(`Aadhaar/VID "${aadhaar_vid}" is not a 12-digit number`);
-  }
-
-  const nomineeRaw = findColumn(raw, COL.nominee_name);
-  const nominee_name = nomineeRaw != null && nomineeRaw !== '' ? String(nomineeRaw).trim() : null;
 
   return {
     rowNumber,
     full_name,
-    phone,
-    member_code,
     category,
-    initial_investment,
-    monthly_installment,
-    chosen_term_months,
-    status,
-    join_date,
     address,
-    father_husband_name,
-    gender,
-    date_of_birth,
-    aadhaar_vid,
-    nominee_name,
+    join_date,
+    monthly_installment,
     warnings,
     errors,
   };
@@ -301,58 +193,31 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
 
   const handleDownloadTemplate = async () => {
     const XLSX = await import('xlsx');
-    // Match column order/casing the admin requested.
     const sample = [
       {
-        'MEMBER ID': '',
         'MEMBER NAME': 'Rahul Sharma',
         'Category': 'C',
-        'Phone': '9876543210',
         'Address': 'Katpuha, Nalbari, Assam',
-        'Father/Husband Name': 'Ramesh Sharma',
-        'Gender': 'Male',
-        'Date of Birth': '01/01/1990',
-        'Aadhaar / VID No.': '123456789012',
-        'Nominee Name': 'Sita Sharma',
         'Join Date': '01/01/2026',
-        'Status': 'active',
-        'INITIAL INVESTMENT': 0,
         'Monthly Installment': 100,
       },
       {
-        'MEMBER ID': '',
-        'MEMBER NAME': 'Priya Investor',
-        'Category': 'B',
-        'Phone': '9876500000',
+        'MEMBER NAME': 'Priya Bezbaruah',
+        'Category': 'C',
         'Address': 'Guwahati, Assam',
-        'Father/Husband Name': 'Anil Investor',
-        'Gender': 'Female',
-        'Date of Birth': '15/06/1985',
-        'Aadhaar / VID No.': '987654321098',
-        'Nominee Name': 'Anil Investor',
         'Join Date': '15/02/2026',
-        'Status': 'active',
-        'INITIAL INVESTMENT': 50000,
-        'Monthly Installment': '',
+        'Monthly Installment': 200,
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sample);
 
     const instructions = [
-      { Column: 'MEMBER ID', Required: 'No', Notes: 'Leave blank to auto-generate (recommended).' },
       { Column: 'MEMBER NAME', Required: 'Yes', Notes: 'Member full name.' },
-      { Column: 'Category', Required: 'Yes', Notes: 'A (founder), B (investor), or C (public). Defaults to C.' },
-      { Column: 'Phone', Required: 'No', Notes: '10-digit Indian mobile. Country codes auto-stripped.' },
+      { Column: 'Category', Required: 'Yes', Notes: 'Must be "C". Only Category C members can be bulk imported.' },
       { Column: 'Address', Required: 'No', Notes: 'Residential address.' },
-      { Column: 'Father/Husband Name', Required: 'No', Notes: 'Guardian or spouse name.' },
-      { Column: 'Gender', Required: 'No', Notes: 'Male / Female / Other (M, F, O also accepted).' },
-      { Column: 'Date of Birth', Required: 'No', Notes: 'DD/MM/YYYY (e.g. 15/01/1990).' },
-      { Column: 'Aadhaar / VID No.', Required: 'No', Notes: '12-digit Aadhaar or Virtual ID. Spaces/hyphens auto-stripped.' },
-      { Column: 'Nominee Name', Required: 'No', Notes: 'Nominee for the account.' },
       { Column: 'Join Date', Required: 'No', Notes: 'DD/MM/YYYY (e.g. 15/01/2026). Defaults to today.' },
-      { Column: 'Status', Required: 'No', Notes: 'active, inactive, matured, withdrawn, closed. Defaults to active.' },
-      { Column: 'INITIAL INVESTMENT', Required: 'For A/B', Notes: `One-time deposit in ${locale.currencySymbol}. For Cat A & B.` },
-      { Column: 'Monthly Installment', Required: 'For A/C', Notes: `Recurring monthly deposit in ${locale.currencySymbol}.` },
+      { Column: 'Monthly Installment', Required: 'Yes', Notes: `Recurring monthly deposit in ${locale.currencySymbol}.` },
+      { Column: '— Member ID —', Required: 'Auto', Notes: 'Auto-generated on import.' },
       { Column: '— Password —', Required: 'Auto', Notes: 'Auto-generated as EUS@<seq> (e.g. EUS@001). Downloadable after import.' },
     ];
     const wsInstructions = XLSX.utils.json_to_sheet(instructions);
@@ -413,20 +278,12 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
         try {
           const resp = await callEdgeFunction<{ member_code: string; password: string }>('admin-create-member', {
             full_name: row.full_name,
-            phone: row.phone,
-            member_code: row.member_code,
-            category: row.category,
-            initial_investment: row.initial_investment,
+            category: 'C',
+            initial_investment: 0,
             monthly_installment: row.monthly_installment,
-            chosen_term_months: row.chosen_term_months,
             join_date: row.join_date,
-            password: '__AUTO__', // server generates EUS@<seq>
+            password: '__AUTO__',
             address: row.address,
-            father_husband_name: row.father_husband_name,
-            gender: row.gender,
-            date_of_birth: row.date_of_birth,
-            aadhaar_vid: row.aadhaar_vid,
-            nominee_name: row.nominee_name,
           });
           return { row, ok: true, member_code: resp.member_code, password: resp.password } as ImportResult;
         } catch (err) {
@@ -450,7 +307,6 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
         'Member Name': r.row.full_name,
         'Member ID': r.member_code ?? '',
         'Password': r.password ?? '',
-        'Phone': r.row.phone ?? '',
       }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -463,20 +319,11 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
     const rows = results
       .filter((r) => !r.ok)
       .map((r) => ({
-        'MEMBER ID': r.row.member_code ?? '',
         'MEMBER NAME': r.row.full_name,
         'Category': r.row.category,
-        'Phone': r.row.phone ?? '',
         'Address': r.row.address ?? '',
-        'Father/Husband Name': r.row.father_husband_name ?? '',
-        'Gender': r.row.gender ?? '',
-        'Date of Birth': r.row.date_of_birth ?? '',
-        'Aadhaar / VID No.': r.row.aadhaar_vid ?? '',
-        'Nominee Name': r.row.nominee_name ?? '',
         'Join Date': r.row.join_date,
-        'Status': r.row.status,
-        'INITIAL INVESTMENT': r.row.initial_investment,
-        'Monthly Installment': r.row.monthly_installment ?? '',
+        'Monthly Installment': r.row.monthly_installment,
         'Error': r.error ?? 'unknown',
       }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -572,11 +419,7 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                       <th className="p-2 font-medium">Row</th>
                       <th className="p-2 font-medium">Status</th>
                       <th className="p-2 font-medium">Name</th>
-                      <th className="p-2 font-medium">Cat</th>
-                      <th className="p-2 font-medium">Phone</th>
-                      <th className="p-2 font-medium">DOB</th>
-                      <th className="p-2 font-medium">Aadhaar</th>
-                      <th className="p-2 font-medium text-right">Initial</th>
+                      <th className="p-2 font-medium">Address</th>
                       <th className="p-2 font-medium text-right">Monthly</th>
                       <th className="p-2 font-medium">Join</th>
                       <th className="p-2 font-medium">Notes</th>
@@ -604,12 +447,8 @@ export function MemberImportModal({ isOpen, onClose, onImportComplete }: Props) 
                             )}
                           </td>
                           <td className="p-2 text-gray-800">{row.full_name || <span className="text-gray-400 italic">missing</span>}</td>
-                          <td className="p-2">{row.category}</td>
-                          <td className="p-2 font-mono text-xs">{row.phone ?? '-'}</td>
-                          <td className="p-2 text-xs">{row.date_of_birth ?? '-'}</td>
-                          <td className="p-2 font-mono text-xs">{row.aadhaar_vid ? `••••${row.aadhaar_vid.slice(-4)}` : '-'}</td>
-                          <td className="p-2 text-right">{row.initial_investment}</td>
-                          <td className="p-2 text-right">{row.monthly_installment ?? '-'}</td>
+                          <td className="p-2 text-xs">{row.address ?? '-'}</td>
+                          <td className="p-2 text-right">{row.monthly_installment}</td>
                           <td className="p-2 text-xs">{row.join_date}</td>
                           <td className="p-2 text-xs text-gray-600">
                             {row.errors.length > 0 && (
