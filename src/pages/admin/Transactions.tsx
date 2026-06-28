@@ -75,17 +75,30 @@ export function Transactions() {
       const { data: totalsData } = await supabase
         .from('savings_installments')
         .select('month_year, amount, penalty');
+      const totals: Record<string, number> = {};
       if (totalsData) {
-        const totals: Record<string, number> = {};
         for (const tx of totalsData) {
           const month = tx.month_year?.substring(0, 7);
           if (month) totals[month] = (totals[month] || 0) + Number(tx.amount) + Number(tx.penalty);
         }
-        const sorted = Object.entries(totals)
-          .map(([month, total]) => ({ month, total }))
-          .sort((a, b) => b.month.localeCompare(a.month));
-        setMonthlyTotals(sorted);
       }
+
+      // Add loan interest payments by month
+      const { data: loanData } = await supabase
+        .from('loan_repayments')
+        .select('interest_portion, payment_date');
+      if (loanData) {
+        for (const tx of loanData) {
+          if (!tx.interest_portion || Number(tx.interest_portion) <= 0) continue;
+          const month = tx.payment_date?.substring(0, 7);
+          if (month) totals[month] = (totals[month] || 0) + Number(tx.interest_portion);
+        }
+      }
+
+      const sorted = Object.entries(totals)
+        .map(([month, total]) => ({ month, total }))
+        .sort((a, b) => b.month.localeCompare(a.month));
+      setMonthlyTotals(sorted);
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
