@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { format, getDate, startOfMonth, setDate, addMonths, startOfYear, endOfYear } from 'date-fns';
+import { format, startOfMonth, setDate, addMonths } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../ui/basic';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { useAuth } from '../../lib/AuthContext';
 
 type PenaltySettings = { percentage: number; dueDay: number; gracePeriod: number };
@@ -19,6 +19,7 @@ type Member = {
 type PreviewRow = {
   member: Member;
   monthYear: string;
+  paymentDate: string;
   amount: number;
   penalty: number;
   dueDate: string;
@@ -66,7 +67,7 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
   const availableMonths = useMemo(() => getAvailableMonths(), []);
   const [step, setStep] = useState<Step>('configure');
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
-  const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [paymentDay, setPaymentDay] = useState(new Date().getDate());
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [existingCombos, setExistingCombos] = useState<Set<string>>(new Set());
   const [progressDone, setProgressDone] = useState(0);
@@ -77,7 +78,7 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
     if (isOpen) {
       setStep('configure');
       setSelectedMonths([]);
-      setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
+      setPaymentDay(new Date().getDate());
       setSelectedMemberIds(new Set(members.map(m => m.id)));
       setExistingCombos(new Set());
       setProgressDone(0);
@@ -85,8 +86,6 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
       setResults({ ok: 0, failed: 0, errors: [] });
     }
   }, [isOpen, members]);
-
-  const paymentDay = paymentDate ? getDate(new Date(paymentDate)) : 0;
 
   const previewRows = useMemo(() => {
     const rows: PreviewRow[] = [];
@@ -98,10 +97,15 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
       for (const monthStr of selectedMonths) {
         if (monthStr < joinMonth) continue;
         const monthYearDate = startOfMonth(new Date(`${monthStr}-01`));
+        const daysInMonth = monthYearDate.getDate() + 30; // approximate, we'll use actual
+        const maxDay = new Date(monthYearDate.getFullYear(), monthYearDate.getMonth() + 1, 0).getDate();
+        const clampedDay = Math.min(paymentDay, maxDay);
+        const actualPaymentDate = format(new Date(monthYearDate.getFullYear(), monthYearDate.getMonth(), clampedDay), 'yyyy-MM-dd');
+        const actualPaymentDay = new Date(actualPaymentDate).getDate();
         const dueDate = setDate(monthYearDate, penaltySettings.dueDay);
         const amount = member.monthly_installment;
-        const penalty = computePenalty(amount, member.category, paymentDay, penaltySettings);
-        rows.push({ member, monthYear: format(monthYearDate, 'yyyy-MM-dd'), amount, penalty, dueDate: format(dueDate, 'yyyy-MM-dd') });
+        const penalty = computePenalty(amount, member.category, actualPaymentDay, penaltySettings);
+        rows.push({ member, monthYear: format(monthYearDate, 'yyyy-MM-dd'), paymentDate: actualPaymentDate, amount, penalty, dueDate: format(dueDate, 'yyyy-MM-dd') });
       }
     }
     return rows;
@@ -139,7 +143,7 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
           member_id: row.member.id,
           amount: row.amount,
           penalty: row.penalty,
-          payment_date: paymentDate,
+          payment_date: row.paymentDate,
           due_date: row.dueDate,
           receipt_number: generateReceipt(row.member.member_code, row.monthYear.substring(0, 7), i + 1),
           month_year: row.monthYear,
@@ -198,9 +202,9 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
                 </div>
               </div>
               <div className="max-w-xs">
-                <Label className="text-sm font-semibold mb-2 block">Payment Date (same for all)</Label>
-                <Input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
-                <p className="text-xs text-gray-500 mt-1">Penalty of {penaltySettings.percentage}% auto-applies if after the {penaltySettings.dueDay + penaltySettings.gracePeriod}th.</p>
+                <Label className="text-sm font-semibold mb-2 block">Payment Day (each month)</Label>
+                <Input type="number" min={1} max={31} value={paymentDay} onChange={e => setPaymentDay(Number(e.target.value))} />
+                <p className="text-xs text-gray-500 mt-1">Payment date for each month = selected day. Penalty of {penaltySettings.percentage}% auto-applies if after the {penaltySettings.dueDay + penaltySettings.gracePeriod}th.</p>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -266,6 +270,7 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
                       <th className="p-3 font-medium">#</th>
                       <th className="p-3 font-medium">Member</th>
                       <th className="p-3 font-medium">Month</th>
+                      <th className="p-3 font-medium">Payment Date</th>
                       <th className="p-3 font-medium text-right">Amount</th>
                       <th className="p-3 font-medium text-right">Penalty</th>
                       <th className="p-3 font-medium text-right">Total</th>
@@ -277,6 +282,7 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
                         <td className="p-3 text-gray-500">{idx + 1}</td>
                         <td className="p-3"><span className="font-medium">{row.member.profiles?.full_name}</span><span className="text-xs text-gray-500 ml-2 font-mono">{row.member.member_code}</span></td>
                         <td className="p-3 text-xs">{format(new Date(row.monthYear), 'MMM yyyy')}</td>
+                        <td className="p-3 text-xs">{safeFormatDate(row.paymentDate)}</td>
                         <td className="p-3 text-right">{formatCurrency(row.amount)}</td>
                         <td className="p-3 text-right">{row.penalty > 0 ? formatCurrency(row.penalty) : '-'}</td>
                         <td className="p-3 text-right font-medium">{formatCurrency(row.amount + row.penalty)}</td>
