@@ -4,6 +4,7 @@ import { Button, Input, Label } from '../../components/ui/basic';
 import { formatCurrency, safeFormatDate } from '../../lib/utils';
 import { format, getDate, startOfMonth, setDate } from 'date-fns';
 import { useAuth } from '../../lib/AuthContext';
+import { BulkInstallmentModal } from '../../components/admin/BulkInstallmentModal';
 
 export function Transactions() {
   const { user } = useAuth();
@@ -15,6 +16,10 @@ export function Transactions() {
   const [txToDelete, setTxToDelete] = useState<any | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Bulk installment modal
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkMembers, setBulkMembers] = useState<any[]>([]);
 
   // Filter State
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -49,10 +54,14 @@ export function Transactions() {
       // Fetch members (Cat A and C only for installments)
       const { data: membersData } = await supabase
         .from('members')
-        .select('id, member_code, category, monthly_installment, profiles(full_name)')
+        .select('id, member_code, category, monthly_installment, join_date, profiles(full_name)')
         .in('category', ['A', 'C'])
         .eq('status', 'active');
-      if (membersData) setMembers(membersData);
+      if (membersData) {
+        setMembers(membersData);
+        // Category C only for bulk installments
+        setBulkMembers(membersData.filter((m: any) => m.category === 'C'));
+      }
 
       // Fetch recent transactions
       const { data: txData } = await supabase
@@ -250,9 +259,14 @@ export function Transactions() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Savings Transactions</h2>
-        <Button onClick={openAddModal} className="gap-2">
-          <i className="fas fa-plus"></i> Record Installment
-        </Button>
+        <div className="flex gap-3">
+          <Button onClick={openAddModal} className="gap-2">
+            <i className="fas fa-plus"></i> Record Installment
+          </Button>
+          <Button onClick={() => setIsBulkModalOpen(true)} variant="outline" className="gap-2">
+            <i className="fas fa-layer-group"></i> Bulk Record
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -490,6 +504,15 @@ export function Transactions() {
           </div>
         </div>
       )}
+
+      {/* Bulk Record Installment Modal */}
+      <BulkInstallmentModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        onComplete={() => { fetchData(); }}
+        members={bulkMembers}
+        penaltySettings={penaltySettings}
+      />
     </div>
   );
 }

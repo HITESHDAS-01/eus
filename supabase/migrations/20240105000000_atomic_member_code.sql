@@ -66,21 +66,13 @@ BEGIN
 END;
 $$;
 
--- 3. Seed the counter table from the HIGHEST existing member code per
---    category+month (not COUNT, which can be wrong after deletes).
---    This ensures new imports continue from the correct sequence and the
---    first code in any unused month starts at 001.
+-- 3. Seed the counter table with current member counts so existing codes are
+--    respected and new imports continue from the correct sequence number.
 INSERT INTO member_code_counters (category, month_year, seq)
 SELECT
     category,
     to_char(join_date, 'MMYYYY') AS month_year,
-    COALESCE(
-        MAX(
-            (regexp_match(member_code, '/(\d+)$'))[1]
-        )::INTEGER,
-        0
-    )
+    COUNT(*)::INTEGER
 FROM members
-WHERE member_code IS NOT NULL
 GROUP BY category, to_char(join_date, 'MMYYYY')
 ON CONFLICT (category, month_year) DO NOTHING;

@@ -23,9 +23,9 @@
 -- Helpers
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.is_admin(user_id UUID) RETURNS BOOLEAN
+CREATE OR REPLACE FUNCTION public.is_admin(uid UUID) RETURNS BOOLEAN
 LANGUAGE sql SECURITY DEFINER STABLE AS $$
-  SELECT EXISTS(SELECT 1 FROM profiles WHERE id = user_id AND role = 'admin');
+  SELECT EXISTS(SELECT 1 FROM profiles WHERE id = uid AND role = 'admin');
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -213,36 +213,38 @@ CREATE INDEX IF NOT EXISTS idx_emi_payments_loan ON emi_payments(loan_id);
 
 -- Members: <prefix>/MMYYYY/<cat>/<seq>  e.g. EUS/052026/C/001
 -- Prefix is read from app_text_settings.member_code_prefix (set in 03-initial-data.sql).
--- Uses an atomic counter table (member_code_counters) instead of COUNT(*) to
--- prevent race conditions during parallel bulk imports.
+-- Uses MAX() on the members table to find the next sequence number per category.
+-- Deleting members automatically resets the numbering.
 
-CREATE TABLE IF NOT EXISTS member_code_counters (
-    category TEXT PRIMARY KEY,
-    seq      INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE OR REPLACE FUNCTION set_member_code() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION generate_member_code() RETURNS TRIGGER AS $$
 DECLARE
   v_prefix     TEXT;
   v_year_month TEXT;
   v_seq        INT;
   v_code       TEXT;
+  v_max_seq    INT;
 BEGIN
   IF NEW.member_code IS NULL OR NEW.member_code = '' THEN
     SELECT value INTO v_prefix FROM app_text_settings WHERE key = 'member_code_prefix';
     IF v_prefix IS NULL THEN v_prefix := 'EUS'; END IF;
     v_year_month := to_char(COALESCE(NEW.join_date, CURRENT_DATE), 'MMYYYY');
 
-    LOOP
-      INSERT INTO member_code_counters (category, seq)
-      VALUES (NEW.category, 1)
-      ON CONFLICT (category)
-      DO UPDATE SET seq = member_code_counters.seq + 1
-      RETURNING seq INTO v_seq;
+    -- Find highest existing sequence number across ALL months for this category
+    SELECT COALESCE(
+      MAX((regexp_replace(member_code, '^.*/', '', 'g'))::INTEGER),
+      0
+    ) INTO v_max_seq
+    FROM members
+    WHERE category = NEW.category
+      AND member_code IS NOT NULL;
 
+    v_seq := v_max_seq + 1;
+    v_code := v_prefix || '/' || v_year_month || '/' || NEW.category || '/' || LPAD(v_seq::text, 3, '0');
+
+    -- Collision safety loop (shouldn't be needed but just in case)
+    WHILE EXISTS (SELECT 1 FROM members WHERE member_code = v_code) LOOP
+      v_seq := v_seq + 1;
       v_code := v_prefix || '/' || v_year_month || '/' || NEW.category || '/' || LPAD(v_seq::text, 3, '0');
-
-      EXIT WHEN NOT EXISTS (SELECT 1 FROM members WHERE member_code = v_code);
     END LOOP;
 
     NEW.member_code := v_code;
@@ -251,10 +253,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_set_member_code ON members;
-CREATE TRIGGER trg_set_member_code
+DROP TRIGGER IF EXISTS trg_generate_member_code ON members;
+CREATE TRIGGER trg_generate_member_code
   BEFORE INSERT ON members
-  FOR EACH ROW EXECUTE FUNCTION set_member_code();
+  FOR EACH ROW EXECUTE FUNCTION generate_member_code();
 
 -- EMI customers: EUS/EMI/C/MMYYYY/NNN
 -- NOTE: the "EUS" portion here is the brand-prefix from the codebase, hardcoded.
@@ -424,7 +426,6 @@ $$;
 
 ALTER TABLE profiles            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE members             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE member_code_counters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE savings_installments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loans               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loan_repayments     ENABLE ROW LEVEL SECURITY;
@@ -448,10 +449,6 @@ DROP POLICY IF EXISTS members_self_read ON members;
 DROP POLICY IF EXISTS members_admin     ON members;
 CREATE POLICY members_self_read ON members FOR SELECT TO authenticated USING (id = auth.uid() OR public.is_admin(auth.uid()));
 CREATE POLICY members_admin     ON members FOR ALL    TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
-
--- member_code_counters: service_role only (used by the trigger via SECURITY DEFINER)
-DROP POLICY IF EXISTS mcc_service ON member_code_counters;
-CREATE POLICY mcc_service ON member_code_counters FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- savings_installments: member can read own; admin everything
 DROP POLICY IF EXISTS si_self_read ON savings_installments;
