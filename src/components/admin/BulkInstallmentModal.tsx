@@ -36,9 +36,10 @@ type Step = 'configure' | 'select-members' | 'preview' | 'importing' | 'done';
 
 function getAvailableMonths(): { label: string; value: string }[] {
   const now = new Date();
+  const start = startOfMonth(new Date(now.getFullYear(), 0, 1));
   const months: { label: string; value: string }[] = [];
-  for (let i = 0; i < 12; i++) {
-    const d = addMonths(startOfMonth(now), i);
+  for (let i = 0; i < 24; i++) {
+    const d = addMonths(start, i);
     months.push({
       label: format(d, 'MMMM yyyy'),
       value: format(d, 'yyyy-MM'),
