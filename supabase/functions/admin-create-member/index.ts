@@ -259,7 +259,24 @@ serve(async (req) => {
     const finalEmail = syntheticEmail(memberRow.member_code);
     const realPassword = passwordFromCode(memberRow.member_code);
 
-    const { error: emailErr } = await admin.auth.admin.updateUserById(newId, { email: finalEmail });
+    let { error: emailErr } = await admin.auth.admin.updateUserById(newId, { email: finalEmail });
+
+    // If email is taken by an orphan auth user, delete the orphan and retry.
+    if (emailErr && emailErr.message?.toLowerCase().includes('already')) {
+      try {
+        const listRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
+          headers: { 'Authorization': `Bearer ${SERVICE_ROLE_KEY}`, 'apikey': SERVICE_ROLE_KEY },
+        });
+        const listData = await listRes.json();
+        const orphan = (listData.users ?? []).find((u: { email: string; id: string }) => u.email === finalEmail && u.id !== newId);
+        if (orphan) {
+          await admin.auth.admin.deleteUser(orphan.id);
+          const retry = await admin.auth.admin.updateUserById(newId, { email: finalEmail });
+          emailErr = retry.error;
+        }
+      } catch (_) { /* ignore cleanup errors */ }
+    }
+
     if (emailErr) {
       console.error(`Failed to update auth email for ${memberRow.member_code}: ${emailErr.message}`);
     }
