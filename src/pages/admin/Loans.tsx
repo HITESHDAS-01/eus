@@ -179,7 +179,7 @@ export function Loans() {
       const loan = activeLoans.find(l => l.id === selectedLoanId);
       if (!loan) throw new Error('Select a loan');
 
-      const principalPortion = Number(repayPrincipal);
+      const principalPortion = Number(repayPrincipal) || 0;
       const interestPortion = Number(repayInterest);
       const amountPaid = principalPortion + interestPortion;
       const outstanding = Number(loan.remaining_principal);
@@ -406,8 +406,8 @@ export function Loans() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Principal Amount (₹)</Label>
-                  <Input type="number" value={repayPrincipal} onChange={(e) => setRepayPrincipal(e.target.value)} required min="0" />
+                  <Label>Principal Amount (₹) <span className="text-gray-400 font-normal">— optional</span></Label>
+                  <Input type="number" value={repayPrincipal} onChange={(e) => setRepayPrincipal(e.target.value)} min="0" placeholder="0" />
                 </div>
                 <div className="space-y-2">
                   <Label>Interest Amount (₹)</Label>
