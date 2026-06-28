@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { format, getDate, startOfMonth, setDate } from 'date-fns';
+import { format, getDate, startOfMonth, setDate, addMonths, startOfYear, endOfYear } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { Button, Input, Label } from '../ui/basic';
 import { formatCurrency } from '../../lib/utils';
@@ -34,18 +34,18 @@ interface Props {
 
 type Step = 'configure' | 'select-members' | 'preview' | 'importing' | 'done';
 
-const AVAILABLE_MONTHS = [
-  { label: 'March 2026', value: '2026-03' },
-  { label: 'April 2026', value: '2026-04' },
-  { label: 'May 2026', value: '2026-05' },
-  { label: 'June 2026', value: '2026-06' },
-  { label: 'July 2026', value: '2026-07' },
-  { label: 'August 2026', value: '2026-08' },
-  { label: 'September 2026', value: '2026-09' },
-  { label: 'October 2026', value: '2026-10' },
-  { label: 'November 2026', value: '2026-11' },
-  { label: 'December 2026', value: '2026-12' },
-];
+function getAvailableMonths(): { label: string; value: string }[] {
+  const now = new Date();
+  const months: { label: string; value: string }[] = [];
+  for (let i = 0; i < 12; i++) {
+    const d = addMonths(startOfMonth(now), i);
+    months.push({
+      label: format(d, 'MMMM yyyy'),
+      value: format(d, 'yyyy-MM'),
+    });
+  }
+  return months;
+}
 
 function computePenalty(amount: number, category: string, paymentDay: number, settings: PenaltySettings): number {
   if (category !== 'C') return 0;
@@ -62,6 +62,7 @@ function generateReceipt(memberCode: string, monthYear: string, seq: number): st
 
 export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, penaltySettings }: Props) {
   const { user } = useAuth();
+  const availableMonths = useMemo(() => getAvailableMonths(), []);
   const [step, setStep] = useState<Step>('configure');
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -158,7 +159,7 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
   };
 
   const toggleMonth = (v: string) => setSelectedMonths(p => p.includes(v) ? p.filter(m => m !== v) : [...p, v]);
-  const toggleAllMonths = () => setSelectedMonths(p => p.length === AVAILABLE_MONTHS.length ? [] : AVAILABLE_MONTHS.map(m => m.value));
+  const toggleAllMonths = () => setSelectedMonths(p => p.length === availableMonths.length ? [] : availableMonths.map(m => m.value));
   const toggleMember = (id: string) => setSelectedMemberIds(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAllMembers = () => setSelectedMemberIds(p => p.size === members.length ? new Set() : new Set(members.map(m => m.id)));
 
@@ -184,10 +185,10 @@ export function BulkInstallmentModal({ isOpen, onClose, onComplete, members, pen
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <Label className="text-sm font-semibold">Select Months</Label>
-                  <button onClick={toggleAllMonths} className="text-xs text-[#1e5a48] hover:underline">{selectedMonths.length === AVAILABLE_MONTHS.length ? 'Deselect All' : 'Select All'}</button>
+                  <button onClick={toggleAllMonths} className="text-xs text-[#1e5a48] hover:underline">{selectedMonths.length === availableMonths.length ? 'Deselect All' : 'Select All'}</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {AVAILABLE_MONTHS.map(m => (
+                  {availableMonths.map(m => (
                     <label key={m.value} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${selectedMonths.includes(m.value) ? 'bg-[#1e5a48]/5 border-[#1e5a48] text-[#1e5a48]' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                       <input type="checkbox" checked={selectedMonths.includes(m.value)} onChange={() => toggleMonth(m.value)} className="w-4 h-4 rounded" />
                       <span className="text-sm font-medium">{m.label}</span>
