@@ -3,6 +3,15 @@ import { supabase } from '../lib/supabase';
 import { formatCurrency, safeFormatDate } from '../lib/utils';
 import { format, addMonths } from 'date-fns';
 
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AdminHome() {
   const [stats, setStats] = useState({
     totalTreasury: 0,
@@ -155,13 +164,52 @@ export function AdminHome() {
     }
   };
 
+  const handleExportReport = () => {
+    const rows: string[][] = [
+      ['EUS Report', '', format(new Date(), 'dd-MMM-yyyy')],
+      [],
+      ['Metric', 'Value'],
+      ['Total Treasury', formatCurrency(stats.totalTreasury)],
+      ['Active Loans Outstanding', formatCurrency(stats.activeLoans)],
+      ['Total Members', String(stats.totalMembers)],
+      ['Current Month Collection', formatCurrency(stats.currentMonthCollection)],
+      ['Total Penalty Collected', formatCurrency(stats.totalPenaltyCollected)],
+      ['Total Interest Earned', formatCurrency(stats.totalInterestEarned)],
+      ['Matured Members', String(stats.maturedMembersCount)],
+      ['Pending Installments', String(stats.pendingInstallments)],
+    ];
+
+    if (recentTx.length > 0) {
+      rows.push([], ['Recent Transactions', 'Date', 'Amount', 'Penalty']);
+      recentTx.forEach(tx => {
+        rows.push([tx.members?.member_code || '', safeFormatDate(tx.created_at), formatCurrency(tx.amount), formatCurrency(tx.penalty)]);
+      });
+    }
+
+    if (alerts.overdue.length > 0) {
+      rows.push([], ['Overdue Members', 'Code', 'Phone']);
+      alerts.overdue.forEach((m: any) => {
+        rows.push([m.profiles?.full_name || '', m.member_code, m.profiles?.phone || '']);
+      });
+    }
+
+    if (alerts.maturing.length > 0) {
+      rows.push([], ['Maturing / Matured Members', 'Code', 'Months Left', 'Maturity Date']);
+      alerts.maturing.forEach((m: any) => {
+        rows.push([m.member_code, m.member_code, String(m.monthsRemaining), format(m.maturityDate, 'dd-MMM-yyyy')]);
+      });
+    }
+
+    downloadCsv(`EUS_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
+  };
+
   if (loading) return <div className="p-6">Loading dashboard...</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-2xl font-medium text-gray-800 tracking-tight">Dashboard Overview</h2>
-        <button className="bg-[#1e5a48] hover:bg-[#154234] text-white px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 text-sm font-medium active:scale-[0.98]">
+        <button onClick={handleExportReport} className="bg-[#1e5a48] hover:bg-[#154234] text-white px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 text-sm font-medium active:scale-[0.98]">
           <i className="fas fa-download"></i> Export Report
         </button>
       </div>
