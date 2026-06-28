@@ -80,11 +80,23 @@ export function ExternalLoans() {
     for (const loan of fetchedLoans) {
       if (loan.status !== 'Active') continue;
       
+      // Get all principal payments for this loan, sorted by date
+      const principalPayments = fetchedTxns
+        .filter(t => t.loan_id === loan.id && t.type === 'Principal Paid')
+        .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
+
+      let currentPrincipal = Number(loan.principal_amount);
+      let paymentIdx = 0;
       let currentMonthDate = addMonths(parseISO(loan.start_date), 1);
       
-      // Loop month by month up to current date
       while (isBefore(currentMonthDate, today) || format(currentMonthDate, 'yyyy-MM') === format(today, 'yyyy-MM')) {
         const monthStr = format(currentMonthDate, 'yyyy-MM');
+        
+        // Deduct any principal payments made before or in this month
+        while (paymentIdx < principalPayments.length && principalPayments[paymentIdx].txn_date <= format(currentMonthDate, 'yyyy-MM-dd')) {
+          currentPrincipal = Math.max(0, currentPrincipal - Number(principalPayments[paymentIdx].amount));
+          paymentIdx++;
+        }
         
         // Check if interest due already exists for this month
         const hasDueForMonth = fetchedTxns.some(t => 
@@ -93,11 +105,11 @@ export function ExternalLoans() {
           t.txn_date.startsWith(monthStr)
         );
 
-        if (!hasDueForMonth) {
+        if (!hasDueForMonth && currentPrincipal > 0) {
           insertQueue.push({
             loan_id: loan.id,
             type: 'Interest Due',
-            amount: (Number(loan.principal_amount) * Number(loan.interest_rate)) / 100,
+            amount: (currentPrincipal * Number(loan.interest_rate)) / 100,
             txn_date: format(currentMonthDate, 'yyyy-MM-dd'),
             notes: `Auto-generated interest for ${format(currentMonthDate, 'MMMM yyyy')}`,
             receipt_number: null
