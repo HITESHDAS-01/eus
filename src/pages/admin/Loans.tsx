@@ -30,6 +30,19 @@ export function Loans() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Edit loan state
+  const [editingLoan, setEditingLoan] = useState<any | null>(null);
+  const [editPrincipal, setEditPrincipal] = useState('');
+  const [editInterestRate, setEditInterestRate] = useState('');
+  const [editDisburseDate, setEditDisburseDate] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Delete loan state
+  const [deletingLoan, setDeletingLoan] = useState<any | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -37,14 +50,11 @@ export function Loans() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Load loan_eligibility_percent from settings (default 80%).
       const { data: settingsRows } = await supabase.from('settings').select('key, value');
       const settingsMap = Object.fromEntries((settingsRows || []).map((s: any) => [s.key, Number(s.value)]));
       const pct = (settingsMap['loan_eligibility_percent'] ?? 80) / 100;
       setLoanEligibilityPct(pct);
 
-      // Need active loans first so we can subtract their balances from
-      // each member's eligibility (an existing loan reduces collateral).
       const { data: loansData } = await supabase
         .from('loans')
         .select(`
@@ -55,7 +65,6 @@ export function Loans() {
       const loans = loansData ?? [];
       if (loansData) setActiveLoans(loansData);
 
-      // Map: member_id → sum of their active loan principals.
       const outstandingByMember = new Map<string, number>();
       for (const l of loans) {
         const prev = outstandingByMember.get(l.member_id) ?? 0;
@@ -79,8 +88,6 @@ export function Loans() {
           else if (m.category === 'B') totalSavingsForEligibility = Number(m.initial_investment);
           else if (m.category === 'C') totalSavingsForEligibility = totalInstallments;
 
-          // Net collateral = savings − outstanding loan principal.
-          // 80% of *net* collateral is the new eligibility ceiling.
           const outstanding = outstandingByMember.get(m.id) ?? 0;
           const netSavings = Math.max(0, totalSavingsForEligibility - outstanding);
 
@@ -113,15 +120,12 @@ export function Loans() {
     }
   };
 
-  // Auto-fill outstanding info when loan selected
   useEffect(() => {
     if (selectedLoanId) {
       const loan = activeLoans.find(l => l.id === selectedLoanId);
       if (loan) {
-        // Simple calculation: 1 month interest
         const interestDue = (Number(loan.remaining_principal) * Number(loan.interest_rate)) / 100;
         setRepayInterest(interestDue.toString());
-        // We don't auto-fill principal to avoid accidental full repayment, but we can show it in UI
       }
     } else {
       setRepayInterest('');
@@ -186,15 +190,9 @@ export function Loans() {
         throw new Error(`Principal repayment (${formatCurrency(principalPortion)}) cannot exceed outstanding balance (${formatCurrency(outstanding)}).`);
       }
 
-      const newRemaining = outstanding - principalPortion;
-      const newStatus = newRemaining <= 0 ? 'closed' : 'active';
-      // Receipt suffix adds a random 4-char block so two admins clicking in
-      // the same second don't get UNIQUE-constraint collisions.
       const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
       const receiptNumber = `LREP-${format(new Date(), 'yyyyMMddHHmmss')}-${suffix}`;
 
-      // Single atomic RPC call — inserts repayment + updates loan balance in one transaction.
-      // Requires the record_loan_repayment() function to be deployed in Supabase (see SQL migration).
       const { error: rpcError } = await supabase.rpc('record_loan_repayment', {
         p_loan_id: selectedLoanId,
         p_amount_paid: amountPaid,
@@ -213,6 +211,63 @@ export function Loans() {
       setError(err.message || 'Failed to process repayment');
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  const openEditLoan = (loan: any) => {
+    setEditingLoan(loan);
+    setEditPrincipal(String(loan.principal_amount));
+    setEditInterestRate(String(loan.interest_rate));
+    setEditDisburseDate(loan.disbursed_date);
+    setEditError('');
+  };
+
+  const handleEditLoan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditLoading(true); setEditError('');
+    try {
+      if (Number(editPrincipal) <= 0) throw new Error('Principal must be greater than 0');
+      if (Number(editInterestRate) < 0) throw new Error('Interest rate cannot be negative');
+
+      const principalChange = Number(editPrincipal) - Number(editingLoan.principal_amount);
+      const newRemaining = Number(editingLoan.remaining_principal) + principalChange;
+      if (newRemaining < 0) throw new Error('New outstanding cannot be negative');
+
+      const { error: updErr } = await supabase
+        .from('loans')
+        .update({
+          principal_amount: Number(editPrincipal),
+          interest_rate: Number(editInterestRate),
+          disbursed_date: editDisburseDate,
+          remaining_principal: newRemaining,
+        })
+        .eq('id', editingLoan.id);
+      if (updErr) throw updErr;
+
+      setEditingLoan(null);
+      fetchData();
+    } catch (err: any) {
+      setEditError(err.message || 'Failed to update loan');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteLoan = async () => {
+    if (!deletingLoan) return;
+    setDeleteLoading(true); setDeleteError('');
+    try {
+      const { error: delErr } = await supabase
+        .from('loans')
+        .delete()
+        .eq('id', deletingLoan.id);
+      if (delErr) throw delErr;
+      setDeletingLoan(null);
+      fetchData();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete loan');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -382,13 +437,14 @@ export function Loans() {
                 <th className="p-4 font-medium text-right">Original Amount</th>
                 <th className="p-4 font-medium text-right">Interest Rate</th>
                 <th className="p-4 font-medium text-right">Outstanding Principal</th>
+                <th className="p-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-500">Loading...</td></tr>
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">Loading...</td></tr>
               ) : activeLoans.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-500">No active loans found.</td></tr>
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">No active loans found.</td></tr>
               ) : (
                 activeLoans.map((loan) => (
                   <tr key={loan.id} className="hover:bg-gray-50 transition-colors">
@@ -424,6 +480,14 @@ export function Loans() {
                     <td className="p-4 text-right font-medium">{formatCurrency(loan.principal_amount)}</td>
                     <td className="p-4 text-right text-gray-600">{loan.interest_rate}% / mo</td>
                     <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(loan.remaining_principal)}</td>
+                    <td className="p-4 text-right space-x-3 whitespace-nowrap">
+                      <button onClick={() => openEditLoan(loan)} className="text-[#f7b05e] hover:text-[#e09d3e] font-medium text-sm" title="Edit">
+                        <i className="fas fa-edit"></i>
+                      </button>
+                      <button onClick={() => { setDeleteError(''); setDeletingLoan(loan); }} className="text-red-500 hover:text-red-700 font-medium text-sm" title="Delete">
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -431,6 +495,71 @@ export function Loans() {
           </table>
         </div>
       </div>
+
+      {/* Edit Loan Modal */}
+      {editingLoan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-5 border-b flex justify-between items-center bg-[#0b3b2f] text-white">
+              <h3 className="font-bold text-lg">Edit Loan</h3>
+              <button onClick={() => setEditingLoan(null)} className="text-white/70 hover:text-white"><i className="fas fa-times text-xl"></i></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {editError && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{editError}</div>}
+              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm space-y-1">
+                <div><span className="text-gray-500">Member:</span> <span className="font-medium">{editingLoan.members?.member_code} - {editingLoan.members?.profiles?.full_name}</span></div>
+                <div><span className="text-gray-500">Outstanding:</span> <span className="font-medium text-blue-600">{formatCurrency(editingLoan.remaining_principal)}</span></div>
+              </div>
+              <form onSubmit={handleEditLoan} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Disbursement Date</Label>
+                  <Input type="date" value={editDisburseDate} onChange={(e) => setEditDisburseDate(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Interest Rate (% per month)</Label>
+                  <Input type="number" step="0.1" value={editInterestRate} onChange={(e) => setEditInterestRate(e.target.value)} required min="0" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Principal Amount (₹)</Label>
+                  <Input type="number" value={editPrincipal} onChange={(e) => setEditPrincipal(e.target.value)} required min="1" />
+                  <p className="text-xs text-gray-500">Changing principal adjusts outstanding balance accordingly.</p>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setEditingLoan(null)} disabled={editLoading}>Cancel</Button>
+                  <Button type="submit" disabled={editLoading}>{editLoading ? 'Saving...' : 'Update Loan'}</Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Loan Confirmation Modal */}
+      {deletingLoan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-red-50 text-red-800 flex items-center gap-3">
+              <i className="fas fa-exclamation-triangle text-xl"></i>
+              <h3 className="font-bold text-lg">Confirm Deletion</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">Permanently delete this loan? This action cannot be undone.</p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 text-sm space-y-1">
+                <div><span className="text-gray-500">Member:</span> <span className="font-medium">{deletingLoan.members?.member_code} - {deletingLoan.members?.profiles?.full_name}</span></div>
+                <div><span className="text-gray-500">Principal:</span> {formatCurrency(deletingLoan.principal_amount)}</div>
+                <div><span className="text-gray-500">Outstanding:</span> <span className="font-medium">{formatCurrency(deletingLoan.remaining_principal)}</span></div>
+              </div>
+              {deleteError && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{deleteError}</div>}
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="outline" onClick={() => setDeletingLoan(null)} disabled={deleteLoading}>Cancel</Button>
+                <Button onClick={handleDeleteLoan} disabled={deleteLoading} className="bg-red-600 hover:bg-red-700 text-white">
+                  {deleteLoading ? 'Deleting...' : 'Delete Loan'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
