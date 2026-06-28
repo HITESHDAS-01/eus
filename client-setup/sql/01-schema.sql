@@ -228,22 +228,27 @@ DECLARE
   v_prefix     TEXT;
   v_year_month TEXT;
   v_seq        INT;
+  v_code       TEXT;
 BEGIN
   IF NEW.member_code IS NULL OR NEW.member_code = '' THEN
     SELECT value INTO v_prefix FROM app_text_settings WHERE key = 'member_code_prefix';
     IF v_prefix IS NULL THEN v_prefix := 'EUS'; END IF;
     v_year_month := to_char(COALESCE(NEW.join_date, CURRENT_DATE), 'MMYYYY');
 
-    -- Atomic increment: INSERT a new row or INCREMENT the existing one.
-    -- ON CONFLICT DO UPDATE acquires a row-level lock, so parallel inserts
-    -- always get distinct sequence numbers.
-    INSERT INTO member_code_counters (category, month_year, seq)
-    VALUES (NEW.category, v_year_month, 1)
-    ON CONFLICT (category, month_year)
-    DO UPDATE SET seq = member_code_counters.seq + 1
-    RETURNING seq INTO v_seq;
+    LOOP
+      -- Atomic increment: INSERT a new row or INCREMENT the existing one.
+      INSERT INTO member_code_counters (category, month_year, seq)
+      VALUES (NEW.category, v_year_month, 1)
+      ON CONFLICT (category, month_year)
+      DO UPDATE SET seq = member_code_counters.seq + 1
+      RETURNING seq INTO v_seq;
 
-    NEW.member_code := v_prefix || '/' || v_year_month || '/' || NEW.category || '/' || LPAD(v_seq::text, 3, '0');
+      v_code := v_prefix || '/' || v_year_month || '/' || NEW.category || '/' || LPAD(v_seq::text, 3, '0');
+
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM members WHERE member_code = v_code);
+    END LOOP;
+
+    NEW.member_code := v_code;
   END IF;
   RETURN NEW;
 END;

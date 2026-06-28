@@ -38,6 +38,7 @@ DECLARE
     month_year_str TEXT;
     seq_num        INTEGER;
     prefix         TEXT;
+    new_code       TEXT;
 BEGIN
     SELECT value INTO prefix FROM app_text_settings WHERE key = 'member_code_prefix';
     IF prefix IS NULL THEN
@@ -46,27 +47,40 @@ BEGIN
 
     month_year_str := to_char(NEW.join_date, 'MMYYYY');
 
-    -- Atomic increment: INSERT a new row or INCREMENT the existing one.
-    -- This is safe under parallel execution because ON CONFLICT DO UPDATE
-    -- acquires a row-level lock on the counter row.
-    INSERT INTO member_code_counters (category, month_year, seq)
-    VALUES (NEW.category, month_year_str, 1)
-    ON CONFLICT (category, month_year)
-    DO UPDATE SET seq = member_code_counters.seq + 1
-    RETURNING seq INTO seq_num;
+    LOOP
+        -- Atomic increment: INSERT a new row or INCREMENT the existing one.
+        INSERT INTO member_code_counters (category, month_year, seq)
+        VALUES (NEW.category, month_year_str, 1)
+        ON CONFLICT (category, month_year)
+        DO UPDATE SET seq = member_code_counters.seq + 1
+        RETURNING seq INTO seq_num;
 
-    NEW.member_code := prefix || '/' || month_year_str || '/' || NEW.category || '/' || lpad(seq_num::TEXT, 3, '0');
+        new_code := prefix || '/' || month_year_str || '/' || NEW.category || '/' || lpad(seq_num::TEXT, 3, '0');
+
+        -- If the code doesn't exist yet, use it. Otherwise loop and try next.
+        EXIT WHEN NOT EXISTS (SELECT 1 FROM members WHERE member_code = new_code);
+    END LOOP;
+
+    NEW.member_code := new_code;
     RETURN NEW;
 END;
 $$;
 
--- 3. Seed the counter table with current member counts so existing codes are
---    respected and new imports continue from the correct sequence number.
+-- 3. Seed the counter table from the HIGHEST existing member code per
+--    category+month (not COUNT, which can be wrong after deletes).
+--    This ensures new imports continue from the correct sequence and the
+--    first code in any unused month starts at 001.
 INSERT INTO member_code_counters (category, month_year, seq)
 SELECT
     category,
     to_char(join_date, 'MMYYYY') AS month_year,
-    COUNT(*)::INTEGER
+    COALESCE(
+        MAX(
+            (regexp_match(member_code, '/(\d+)$'))[1]
+        )::INTEGER,
+        0
+    )
 FROM members
+WHERE member_code IS NOT NULL
 GROUP BY category, to_char(join_date, 'MMYYYY')
 ON CONFLICT (category, month_year) DO NOTHING;
