@@ -68,8 +68,7 @@ export function Transactions() {
       const { data: txData } = await supabase
         .from('savings_installments')
         .select('*, members(member_code, category, profiles(full_name, photo_url))')
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .order('created_at', { ascending: false });
       if (txData) setTransactions(txData);
 
       // Fetch monthly totals
@@ -264,9 +263,7 @@ export function Transactions() {
   };
 
   const filteredTransactions = transactions.filter(tx => {
-    const txDate = tx.payment_date ? new Date(tx.payment_date) : new Date();
-    const safeTxDate = isNaN(txDate.getTime()) ? new Date() : txDate;
-    const txMonth = format(safeTxDate, 'yyyy-MM');
+    const txMonth = tx.month_year ? tx.month_year.substring(0, 7) : '';
     const matchesMonth = filterMonth === '' || txMonth === filterMonth;
     const matchesMember = filterMember === 'All' || tx.member_id === filterMember;
     return matchesMonth && matchesMember;
