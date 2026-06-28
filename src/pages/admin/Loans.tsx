@@ -420,7 +420,7 @@ export function Loans() {
           className={`px-6 py-3 font-medium text-sm ${activeTab === 'history' ? 'border-b-2 border-[#1e5a48] text-[#1e5a48]' : 'text-gray-500 hover:text-gray-700'}`}
           onClick={() => { setActiveTab('history'); fetchRepayments(); }}
         >
-          Payment History
+          Repayment History
         </button>
       </div>
 
@@ -563,7 +563,7 @@ export function Loans() {
       {activeTab === 'history' && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-6 border-b border-gray-100">
-            <h3 className="text-lg font-bold text-gray-800">Payment History</h3>
+            <h3 className="text-lg font-bold text-gray-800">Repayment History</h3>
           </div>
 
           {/* Filters */}
