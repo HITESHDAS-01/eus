@@ -216,67 +216,67 @@ export function AdminHome() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#e8f5f1] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#c8e6dd] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-vault text-6xl text-[#1e5a48]"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Treasury</p>
+          <p className="text-sm text-[#3d7a68] font-medium mb-2 relative z-10">Total Treasury</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.totalTreasury)}</p>
         </div>
         
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#e8f0fa] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#c8daee] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-hand-holding-usd text-6xl text-blue-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Active Loans</p>
+          <p className="text-sm text-[#4a7ab5] font-medium mb-2 relative z-10">Active Loans</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.activeLoans)}</p>
         </div>
         
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#f0eaf8] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#ddd0f0] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-users text-6xl text-purple-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Members</p>
+          <p className="text-sm text-[#7a5aa5] font-medium mb-2 relative z-10">Total Members</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.totalMembers}</p>
         </div>
         
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#e6f5ea] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#c4e5cd] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-calendar-check text-6xl text-green-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Current Month Collection</p>
+          <p className="text-sm text-[#4a9a5e] font-medium mb-2 relative z-10">Current Month Collection</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.currentMonthCollection)}</p>
         </div>
         
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#fdf2ea] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#f0dac8] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-exclamation-circle text-6xl text-orange-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Penalty Collected</p>
+          <p className="text-sm text-[#b57a4a] font-medium mb-2 relative z-10">Total Penalty Collected</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.totalPenaltyCollected)}</p>
         </div>
         
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#e6f5f2] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#c4e5df] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-chart-line text-6xl text-teal-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Total Interest Earned</p>
+          <p className="text-sm text-[#4a9a8a] font-medium mb-2 relative z-10">Total Interest Earned</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{formatCurrency(stats.totalInterestEarned)}</p>
         </div>
         
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#fdecea] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#f0cac8] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-award text-6xl text-red-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Matured Members</p>
+          <p className="text-sm text-[#b55a5a] font-medium mb-2 relative z-10">Matured Members</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.maturedMembersCount}</p>
         </div>
 
-        <div className="bg-white rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)] transition-shadow duration-300 border border-gray-50 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="bg-[#fdf5ea] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300 border border-[#f0e2c8] relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-25 transition-opacity">
             <i className="fas fa-clock text-6xl text-amber-500"></i>
           </div>
-          <p className="text-sm text-gray-500 font-medium mb-2 relative z-10">Pending Installments</p>
+          <p className="text-sm text-[#b59a4a] font-medium mb-2 relative z-10">Pending Installments</p>
           <p className="text-3xl font-bold text-gray-800 tracking-tight relative z-10">{stats.pendingInstallments}</p>
         </div>
       </div>
