@@ -138,24 +138,21 @@ serve(async (req) => {
     );
   }
 
-  // Generate the member_code up-front so the synthetic email is deterministic.
-  // If admin supplied a code, use it; otherwise fall back to the DB trigger
-  // (we'll re-read it after insert).
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
   const providedCode = body.member_code?.trim() || null;
 
-  const finalPassword = autoPassword ? passwordFromCode(providedCode ?? '000') : body.password;
-
   // -----------------------------------------------------------------------
   // Two paths:
-  //   1. Custom code provided → use synthetic email directly
-  //   2. Auto-generate code   → use temp UUID email, let DB trigger generate
-  //      the code, then update the auth email afterwards. This eliminates the
-  //      race condition where parallel requests count the same rows and
-  //      generate duplicate codes / emails.
+  //   1. Custom code provided → generate password from code now
+  //   2. Auto-generate code   → use temp password, generate real password
+  //      AFTER the DB trigger creates the member_code.
   // -----------------------------------------------------------------------
   const useAutoCode = !providedCode;
+  const finalPassword = useAutoCode
+    ? crypto.randomUUID().slice(0, 12) // temp password, replaced after insert
+    : (autoPassword ? passwordFromCode(providedCode) : body.password);
+
   let email: string;
 
   if (useAutoCode) {
@@ -256,15 +253,20 @@ serve(async (req) => {
     });
   }
 
-  // 4. For auto-generated codes: update the auth user's email from the temp
-  //    UUID address to the real synthetic email based on the generated code.
+  // 4. For auto-generated codes: update the auth user's email and password
+  //    from the temp values to the real ones based on the generated code.
   if (useAutoCode && memberRow.member_code) {
     const finalEmail = syntheticEmail(memberRow.member_code);
-    const { error: updateErr } = await admin.auth.admin.updateUserById(newId, { email: finalEmail });
-    if (updateErr) {
-      // Non-fatal: the member exists and can be managed from the dashboard.
-      // Log for debugging but don't fail the entire operation.
-      console.error(`Failed to update auth email for ${memberRow.member_code}: ${updateErr.message}`);
+    const realPassword = passwordFromCode(memberRow.member_code);
+
+    const { error: emailErr } = await admin.auth.admin.updateUserById(newId, { email: finalEmail });
+    if (emailErr) {
+      console.error(`Failed to update auth email for ${memberRow.member_code}: ${emailErr.message}`);
+    }
+
+    const { error: pwErr } = await admin.auth.admin.updateUserById(newId, { password: realPassword });
+    if (pwErr) {
+      console.error(`Failed to update auth password for ${memberRow.member_code}: ${pwErr.message}`);
     }
   }
 
@@ -273,7 +275,7 @@ serve(async (req) => {
       id: newId,
       member_code: memberRow.member_code,
       login_email: useAutoCode ? syntheticEmail(memberRow.member_code) : email,
-      password: finalPassword,
+      password: useAutoCode ? passwordFromCode(memberRow.member_code) : finalPassword,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
   );
