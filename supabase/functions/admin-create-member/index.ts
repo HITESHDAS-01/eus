@@ -143,42 +143,39 @@ serve(async (req) => {
   // (we'll re-read it after insert).
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  let providedCode = body.member_code?.trim() || null;
-  let codeForEmail = providedCode;
+  const providedCode = body.member_code?.trim() || null;
 
-  if (!codeForEmail) {
-    // Preview what the trigger will assign: org prefix + MMYYYY + cat + 3-digit seq.
-    const { data: prefixRow } = await admin
-      .from('app_text_settings')
-      .select('value')
-      .eq('key', 'member_code_prefix')
-      .single();
-    const prefix = prefixRow?.value ?? 'EUS';
-    const join = body.join_date ? new Date(body.join_date) : new Date();
-    const mmYYYY = `${String(join.getMonth() + 1).padStart(2, '0')}${join.getFullYear()}`;
-    const { count } = await admin
-      .from('members')
-      .select('id', { count: 'exact', head: true })
-      .eq('category', body.category)
-      .gte('join_date', `${join.getFullYear()}-${String(join.getMonth() + 1).padStart(2, '0')}-01`);
-    const seq = String((count ?? 0) + 1).padStart(3, '0');
-    codeForEmail = `${prefix}/${mmYYYY}/${body.category}/${seq}`;
+  const finalPassword = autoPassword ? passwordFromCode(providedCode ?? '000') : body.password;
+
+  // -----------------------------------------------------------------------
+  // Two paths:
+  //   1. Custom code provided → use synthetic email directly
+  //   2. Auto-generate code   → use temp UUID email, let DB trigger generate
+  //      the code, then update the auth email afterwards. This eliminates the
+  //      race condition where parallel requests count the same rows and
+  //      generate duplicate codes / emails.
+  // -----------------------------------------------------------------------
+  const useAutoCode = !providedCode;
+  let email: string;
+
+  if (useAutoCode) {
+    // Temp email — will be replaced after the trigger generates the real code.
+    email = `${crypto.randomUUID()}@${MEMBER_EMAIL_DOMAIN}`;
+  } else {
+    email = syntheticEmail(providedCode);
   }
 
-  const email = syntheticEmail(codeForEmail);
-  const finalPassword = autoPassword ? passwordFromCode(codeForEmail) : body.password;
-
-  // 1. Create auth user (service role, no email confirmation needed).
+  // 1. Create auth user.
   let { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password: finalPassword,
     email_confirm: true,
-    user_metadata: { full_name: body.full_name, member_code: codeForEmail },
+    user_metadata: { full_name: body.full_name, member_code: providedCode },
   });
 
-  // If the email is already taken (orphaned auth user from a previous delete),
-  // find and remove the orphan, then retry the create.
-  if (createErr && (createErr.message?.toLowerCase().includes('already') || createErr.message?.toLowerCase().includes('registered'))) {
+  // If a custom code collides with an existing auth user (orphan from a
+  // previous partial delete), find and remove the orphan, then retry.
+  if (!useAutoCode && createErr && (createErr.message?.toLowerCase().includes('already') || createErr.message?.toLowerCase().includes('registered'))) {
     try {
       const listRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
         headers: { 'Authorization': `Bearer ${SERVICE_ROLE_KEY}`, 'apikey': SERVICE_ROLE_KEY },
@@ -186,18 +183,16 @@ serve(async (req) => {
       const listData = await listRes.json();
       const orphan = (listData.users ?? []).find((u: { email: string; id: string }) => u.email === email);
       if (orphan) {
-        // Delete any leftover profile row (member row is already gone from our delete flow).
         await admin.from('profiles').delete().eq('id', orphan.id);
         await admin.auth.admin.deleteUser(orphan.id);
       }
     } catch (_) { /* ignore cleanup errors — retry will surface real issues */ }
 
-    // Retry
     const retry = await admin.auth.admin.createUser({
       email,
       password: finalPassword,
       email_confirm: true,
-      user_metadata: { full_name: body.full_name, member_code: codeForEmail },
+      user_metadata: { full_name: body.full_name, member_code: providedCode },
     });
     created = retry.data;
     createErr = retry.error;
@@ -236,7 +231,8 @@ serve(async (req) => {
     });
   }
 
-  // 3. Insert member.
+  // 3. Insert member. When no member_code is provided, the DB trigger
+  //    (generate_member_code) fires and assigns a unique code atomically.
   const { data: memberRow, error: memberErr } = await admin
     .from('members')
     .insert({
@@ -260,11 +256,23 @@ serve(async (req) => {
     });
   }
 
+  // 4. For auto-generated codes: update the auth user's email from the temp
+  //    UUID address to the real synthetic email based on the generated code.
+  if (useAutoCode && memberRow.member_code) {
+    const finalEmail = syntheticEmail(memberRow.member_code);
+    const { error: updateErr } = await admin.auth.admin.updateUserById(newId, { email: finalEmail });
+    if (updateErr) {
+      // Non-fatal: the member exists and can be managed from the dashboard.
+      // Log for debugging but don't fail the entire operation.
+      console.error(`Failed to update auth email for ${memberRow.member_code}: ${updateErr.message}`);
+    }
+  }
+
   return new Response(
     JSON.stringify({
       id: newId,
       member_code: memberRow.member_code,
-      login_email: email,
+      login_email: useAutoCode ? syntheticEmail(memberRow.member_code) : email,
       password: finalPassword,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
