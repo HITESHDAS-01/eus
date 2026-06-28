@@ -213,21 +213,37 @@ CREATE INDEX IF NOT EXISTS idx_emi_payments_loan ON emi_payments(loan_id);
 
 -- Members: <prefix>/MMYYYY/<cat>/<seq>  e.g. EUS/052026/C/001
 -- Prefix is read from app_text_settings.member_code_prefix (set in 03-initial-data.sql).
+-- Uses an atomic counter table (member_code_counters) instead of COUNT(*) to
+-- prevent race conditions during parallel bulk imports.
+
+CREATE TABLE IF NOT EXISTS member_code_counters (
+    category   TEXT NOT NULL,
+    month_year TEXT NOT NULL,
+    seq        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (category, month_year)
+);
+
 CREATE OR REPLACE FUNCTION set_member_code() RETURNS TRIGGER AS $$
 DECLARE
   v_prefix     TEXT;
   v_year_month TEXT;
-  v_count      INT;
+  v_seq        INT;
 BEGIN
   IF NEW.member_code IS NULL OR NEW.member_code = '' THEN
     SELECT value INTO v_prefix FROM app_text_settings WHERE key = 'member_code_prefix';
     IF v_prefix IS NULL THEN v_prefix := 'EUS'; END IF;
     v_year_month := to_char(COALESCE(NEW.join_date, CURRENT_DATE), 'MMYYYY');
-    SELECT COUNT(*) + 1 INTO v_count
-    FROM members
-    WHERE category = NEW.category
-      AND to_char(join_date, 'MMYYYY') = v_year_month;
-    NEW.member_code := v_prefix || '/' || v_year_month || '/' || NEW.category || '/' || LPAD(v_count::text, 3, '0');
+
+    -- Atomic increment: INSERT a new row or INCREMENT the existing one.
+    -- ON CONFLICT DO UPDATE acquires a row-level lock, so parallel inserts
+    -- always get distinct sequence numbers.
+    INSERT INTO member_code_counters (category, month_year, seq)
+    VALUES (NEW.category, v_year_month, 1)
+    ON CONFLICT (category, month_year)
+    DO UPDATE SET seq = member_code_counters.seq + 1
+    RETURNING seq INTO v_seq;
+
+    NEW.member_code := v_prefix || '/' || v_year_month || '/' || NEW.category || '/' || LPAD(v_seq::text, 3, '0');
   END IF;
   RETURN NEW;
 END;
@@ -406,6 +422,7 @@ $$;
 
 ALTER TABLE profiles            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE members             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE member_code_counters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE savings_installments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loans               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loan_repayments     ENABLE ROW LEVEL SECURITY;
@@ -429,6 +446,10 @@ DROP POLICY IF EXISTS members_self_read ON members;
 DROP POLICY IF EXISTS members_admin     ON members;
 CREATE POLICY members_self_read ON members FOR SELECT TO authenticated USING (id = auth.uid() OR public.is_admin(auth.uid()));
 CREATE POLICY members_admin     ON members FOR ALL    TO authenticated USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
+
+-- member_code_counters: service_role only (used by the trigger via SECURITY DEFINER)
+DROP POLICY IF EXISTS mcc_service ON member_code_counters;
+CREATE POLICY mcc_service ON member_code_counters FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- savings_installments: member can read own; admin everything
 DROP POLICY IF EXISTS si_self_read ON savings_installments;
