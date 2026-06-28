@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/AuthContext';
 
 export function Loans() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'disburse' | 'repay' | 'history'>('disburse');
+  const [activeTab, setActiveTab] = useState<'active' | 'disburse' | 'repay' | 'history'>('active');
   const [members, setMembers] = useState<any[]>([]);
   const [activeLoans, setActiveLoans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -399,6 +399,12 @@ export function Loans() {
 
       <div className="flex border-b border-gray-200">
         <button
+          className={`px-6 py-3 font-medium text-sm ${activeTab === 'active' ? 'border-b-2 border-[#1e5a48] text-[#1e5a48]' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('active')}
+        >
+          Active Loans
+        </button>
+        <button
           className={`px-6 py-3 font-medium text-sm ${activeTab === 'disburse' ? 'border-b-2 border-[#1e5a48] text-[#1e5a48]' : 'text-gray-500 hover:text-gray-700'}`}
           onClick={() => { setActiveTab('disburse'); setError(''); setSuccessMsg(''); }}
         >
@@ -418,7 +424,7 @@ export function Loans() {
         </button>
       </div>
 
-      {activeTab !== 'history' && (
+      {activeTab !== 'active' && activeTab !== 'history' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 max-w-2xl">
         {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">{error}</div>}
         {successMsg && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm border border-green-100">{successMsg}</div>}
@@ -625,11 +631,11 @@ export function Loans() {
         </div>
       )}
 
-      {/* Active Loans Summary Table */}
-      {activeTab !== 'history' && (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
+      {/* Active Loans Tab */}
+      {activeTab === 'active' && (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800">Active Loans Summary</h3>
+          <h3 className="text-lg font-bold text-gray-800">Active Loans</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
