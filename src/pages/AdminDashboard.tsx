@@ -8,6 +8,7 @@ import { Transactions } from './admin/Transactions';
 import { Loans } from './admin/Loans';
 import { Settings } from './admin/Settings';
 import { Reports } from './admin/Reports';
+import { Expenses } from './admin/Expenses';
 import { MemberProfile } from './admin/MemberProfile';
 import { Investments } from './admin/Investments';
 import { ProductEmi } from './admin/ProductEmi';
@@ -45,6 +46,7 @@ export function AdminDashboard() {
     { path: '/admin/investments', label: 'Investments', icon: 'fas fa-chart-line' },
     { path: '/admin/emi', label: 'Product EMI', icon: 'fas fa-mobile-alt' },
     { path: '/admin/reports', label: 'Reports', icon: 'fas fa-chart-bar' },
+    { path: '/admin/expenses', label: 'Expenses', icon: 'fas fa-receipt' },
     { path: '/admin/settings', label: 'Settings', icon: 'fas fa-cog' },
   ];
 
@@ -160,6 +162,7 @@ export function AdminDashboard() {
               <Route path="/investments/*" element={<Investments />} />
               <Route path="/emi/*" element={<ProductEmi />} />
               <Route path="/reports/*" element={<Reports />} />
+              <Route path="/expenses/*" element={<Expenses />} />
               <Route path="/settings/*" element={<Settings />} />
             </Routes>
           </div>
