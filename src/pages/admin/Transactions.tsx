@@ -33,6 +33,7 @@ export function Transactions() {
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [penaltySettings, setPenaltySettings] = useState({ percentage: 5, dueDay: 15, gracePeriod: 3 });
+  const [monthlyTotals, setMonthlyTotals] = useState<{ month: string; total: number }[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -70,6 +71,22 @@ export function Transactions() {
         .order('created_at', { ascending: false })
         .limit(50);
       if (txData) setTransactions(txData);
+
+      // Fetch monthly totals
+      const { data: totalsData } = await supabase
+        .from('savings_installments')
+        .select('month_year, amount, penalty');
+      if (totalsData) {
+        const totals: Record<string, number> = {};
+        for (const tx of totalsData) {
+          const month = tx.month_year?.substring(0, 7);
+          if (month) totals[month] = (totals[month] || 0) + Number(tx.amount) + Number(tx.penalty);
+        }
+        const sorted = Object.entries(totals)
+          .map(([month, total]) => ({ month, total }))
+          .sort((a, b) => b.month.localeCompare(a.month));
+        setMonthlyTotals(sorted);
+      }
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
@@ -268,6 +285,26 @@ export function Transactions() {
           </Button>
         </div>
       </div>
+
+      {/* Monthly Totals */}
+      {monthlyTotals.length > 0 && (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {monthlyTotals.map(m => {
+            const monthDate = new Date(`${m.month}-01`);
+            const isSelected = filterMonth === m.month;
+            return (
+              <button
+                key={m.month}
+                onClick={() => setFilterMonth(isSelected ? '' : m.month)}
+                className={`shrink-0 px-4 py-3 rounded-xl border text-left transition-all ${isSelected ? 'bg-[#1e5a48] text-white border-[#1e5a48]' : 'bg-white hover:border-[#1e5a48]/30 border-gray-100'}`}
+              >
+                <p className={`text-xs font-medium ${isSelected ? 'text-white/70' : 'text-gray-500'}`}>{format(monthDate, 'MMM yyyy')}</p>
+                <p className={`text-lg font-bold ${isSelected ? 'text-white' : 'text-[#1e5a48]'}`}>{formatCurrency(m.total)}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
