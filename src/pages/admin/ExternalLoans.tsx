@@ -37,6 +37,11 @@ export function ExternalLoans() {
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentNotes, setPaymentNotes] = useState('');
 
+  // Filter & Sort State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Overdue' | 'Closed'>('All');
+  const [sortBy, setSortBy] = useState<'start_desc' | 'start_asc' | 'amount_desc' | 'amount_asc' | 'due_desc' | 'due_asc'>('start_desc');
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -337,6 +342,51 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
     return due - paid > 0;
   });
 
+  // Helper: get balance interest for a loan
+  const getLoanBalanceInterest = (loanId: string) => {
+    const loanTxns = transactions.filter(t => t.loan_id === loanId);
+    const due = loanTxns.filter(t => t.type === 'Interest Due').reduce((s, t) => s + Number(t.amount), 0);
+    const paid = loanTxns.filter(t => t.type === 'Interest Paid').reduce((s, t) => s + Number(t.amount), 0);
+    return due - paid;
+  };
+
+  // Helper: get last interest due date for a loan (for "Due Date" sorting)
+  const getLoanLastDueDate = (loanId: string) => {
+    const interestDues = transactions
+      .filter(t => t.loan_id === loanId && t.type === 'Interest Due')
+      .sort((a, b) => b.txn_date.localeCompare(a.txn_date));
+    return interestDues[0]?.txn_date || '';
+  };
+
+  // Build effective status for each loan
+  const getEffectiveStatus = (loan: any): 'Active' | 'Overdue' | 'Closed' => {
+    if (loan.status === 'Closed') return 'Closed';
+    if (getLoanBalanceInterest(loan.id) > 0) return 'Overdue';
+    return 'Active';
+  };
+
+  // Filter + Sort
+  const filteredLoans = loans
+    .filter(loan => {
+      const matchesSearch = !searchQuery ||
+        loan.borrower_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (loan.phone || '').includes(searchQuery);
+      const effectiveStatus = getEffectiveStatus(loan);
+      const matchesStatus = statusFilter === 'All' || effectiveStatus === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'start_asc':  return a.start_date.localeCompare(b.start_date);
+        case 'start_desc': return b.start_date.localeCompare(a.start_date);
+        case 'amount_asc':  return Number(a.principal_amount) - Number(b.principal_amount);
+        case 'amount_desc': return Number(b.principal_amount) - Number(a.principal_amount);
+        case 'due_asc':  return (getLoanLastDueDate(a.id) || '9999').localeCompare(getLoanLastDueDate(b.id) || '9999');
+        case 'due_desc': return (getLoanLastDueDate(b.id) || '0000').localeCompare(getLoanLastDueDate(a.id) || '0000');
+        default: return 0;
+      }
+    });
+
   const handlePrint = () => {
     window.print();
   };
@@ -413,6 +463,54 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex-1 relative">
+          <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          <input
+            type="text"
+            placeholder="Search by borrower name or phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1e5a48] focus:border-transparent text-sm"
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1e5a48] focus:border-transparent bg-white text-sm"
+          >
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Overdue">Overdue</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+        <div className="w-full sm:w-48">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1e5a48] focus:border-transparent bg-white text-sm"
+          >
+            <option value="start_desc">Newest First (Start Date)</option>
+            <option value="start_asc">Oldest First (Start Date)</option>
+            <option value="amount_desc">Highest Amount</option>
+            <option value="amount_asc">Lowest Amount</option>
+            <option value="due_desc">Due: Latest First</option>
+            <option value="due_asc">Due: Earliest First</option>
+          </select>
+        </div>
+        {(searchQuery || statusFilter !== 'All') && (
+          <button
+            onClick={() => { setSearchQuery(''); setStatusFilter('All'); setSortBy('start_desc'); }}
+            className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-3 py-2"
+          >
+            <i className="fas fa-times mr-1"></i> Clear
+          </button>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -429,10 +527,14 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">Loading loans...</td></tr>
-              ) : loans.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">No external personal loans found.</td></tr>
+              ) : filteredLoans.length === 0 ? (
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">
+                  {loans.length === 0 ? 'No external personal loans found.' : 'No loans match your filters.'}
+                </td></tr>
               ) : (
-                loans.map((loan) => (
+                filteredLoans.map((loan) => {
+                  const effectiveStatus = getEffectiveStatus(loan);
+                  return (
                   <tr key={loan.id} className="hover:bg-gray-50">
                     <td className="p-4">
                       <div className="font-bold text-gray-800">{loan.borrower_name}</div>
@@ -446,9 +548,11 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
                     <td className="p-4 text-right text-orange-600 font-medium">{loan.interest_rate}% / mo</td>
                     <td className="p-4 text-center">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                        loan.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        effectiveStatus === 'Active' ? 'bg-green-100 text-green-700' :
+                        effectiveStatus === 'Overdue' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-600'
                       }`}>
-                        {loan.status}
+                        {effectiveStatus}
                       </span>
                     </td>
                     <td className="p-4 text-right space-x-2">
@@ -474,7 +578,8 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
                       </button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
