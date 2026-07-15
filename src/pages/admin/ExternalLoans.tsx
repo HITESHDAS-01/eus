@@ -316,6 +316,26 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
   const currentPrincipal = selectedLoan ? Number(selectedLoan.principal_amount) - totalPrincipalPaid : 0;
   const balanceInterest = totalInterestDue - totalInterestPaid;
 
+  // Global summary across ALL loans
+  const activeLoans = loans.filter(l => l.status === 'Active');
+  const totalLent = activeLoans.reduce((s, l) => s + Number(l.principal_amount), 0);
+  const totalInterestCollected = transactions
+    .filter(t => t.type === 'Interest Paid')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const totalInterestDueAll = transactions
+    .filter(t => t.type === 'Interest Due')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const totalInterestOutstanding = totalInterestDueAll - totalInterestCollected;
+  const totalPrincipalCollected = transactions
+    .filter(t => t.type === 'Principal Paid')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const overdueLoans = activeLoans.filter(loan => {
+    const loanTxns = transactions.filter(t => t.loan_id === loan.id);
+    const due = loanTxns.filter(t => t.type === 'Interest Due').reduce((s, t) => s + Number(t.amount), 0);
+    const paid = loanTxns.filter(t => t.type === 'Interest Paid').reduce((s, t) => s + Number(t.amount), 0);
+    return due - paid > 0;
+  });
+
   const handlePrint = () => {
     window.print();
   };
@@ -331,6 +351,58 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
 
       {error && <div className="p-4 bg-red-50 text-red-700 rounded-xl border border-red-100">{error}</div>}
       {successMsg && <div className="p-4 bg-green-50 text-green-700 rounded-xl border border-green-100">{successMsg}</div>}
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">
+            <i className="fas fa-hand-holding-usd"></i>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Total Lent</p>
+            <p className="text-xl font-bold text-gray-800">{formatCurrency(totalLent)}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center text-xl shrink-0">
+            <i className="fas fa-arrow-down"></i>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Principal Recovered</p>
+            <p className="text-xl font-bold text-green-600">{formatCurrency(totalPrincipalCollected)}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center text-xl shrink-0">
+            <i className="fas fa-coins"></i>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Interest Collected</p>
+            <p className="text-xl font-bold text-teal-600">{formatCurrency(totalInterestCollected)}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center text-xl shrink-0">
+            <i className="fas fa-clock"></i>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 font-medium">Interest Outstanding</p>
+            <p className="text-xl font-bold text-orange-600">{formatCurrency(totalInterestOutstanding)}</p>
+          </div>
+        </div>
+        <div className={`p-5 rounded-2xl shadow-sm border flex items-center gap-4 ${overdueLoans.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 ${overdueLoans.length > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+            <i className="fas fa-exclamation-triangle"></i>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500">Overdue Loans</p>
+            <p className={`text-xl font-bold ${overdueLoans.length > 0 ? 'text-red-600' : 'text-gray-800'}`}>
+              {overdueLoans.length}
+              <span className="text-xs font-normal text-gray-500 ml-1">/ {activeLoans.length}</span>
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
