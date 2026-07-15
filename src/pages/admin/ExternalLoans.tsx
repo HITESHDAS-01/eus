@@ -16,6 +16,7 @@ export function ExternalLoans() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isOverdueModalOpen, setIsOverdueModalOpen] = useState(false);
   const [selectedLoanId, setSelectedLoanId] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -390,7 +391,10 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
             <p className="text-xl font-bold text-orange-600">{formatCurrency(totalInterestOutstanding)}</p>
           </div>
         </div>
-        <div className={`p-5 rounded-2xl shadow-sm border flex items-center gap-4 ${overdueLoans.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+        <div
+          className={`p-5 rounded-2xl shadow-sm border flex items-center gap-4 transition-all ${overdueLoans.length > 0 ? 'bg-red-50 border-red-200 hover:border-red-300 hover:shadow-md cursor-pointer' : 'bg-white border-gray-100'}`}
+          onClick={() => overdueLoans.length > 0 && setIsOverdueModalOpen(true)}
+        >
           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 ${overdueLoans.length > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
             <i className="fas fa-exclamation-triangle"></i>
           </div>
@@ -401,6 +405,11 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
               <span className="text-xs font-normal text-gray-500 ml-1">/ {activeLoans.length}</span>
             </p>
           </div>
+          {overdueLoans.length > 0 && (
+            <div className="ml-auto">
+              <i className="fas fa-chevron-right text-red-400 text-sm"></i>
+            </div>
+          )}
         </div>
       </div>
 
@@ -701,6 +710,52 @@ CREATE POLICY "ext_loan_txns_admin" ON ext_loan_txns
                   {formLoading ? 'Deleting...' : 'Delete'}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue Loans Modal */}
+      {isOverdueModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-5 border-b flex justify-between items-center bg-red-600 text-white shrink-0">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <i className="fas fa-exclamation-triangle"></i> Overdue Loans ({overdueLoans.length})
+              </h3>
+              <button onClick={() => setIsOverdueModalOpen(false)} className="text-white/70 hover:text-white">
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {overdueLoans.map(loan => {
+                const loanTxns = transactions.filter(t => t.loan_id === loan.id);
+                const due = loanTxns.filter(t => t.type === 'Interest Due').reduce((s, t) => s + Number(t.amount), 0);
+                const paid = loanTxns.filter(t => t.type === 'Interest Paid').reduce((s, t) => s + Number(t.amount), 0);
+                const balance = due - paid;
+                return (
+                  <div
+                    key={loan.id}
+                    className="p-4 rounded-xl border border-red-200 bg-red-50/50 hover:bg-red-50 transition-colors cursor-pointer flex justify-between items-center"
+                    onClick={() => { setIsOverdueModalOpen(false); setSelectedLoanId(loan.id); setIsLedgerModalOpen(true); }}
+                  >
+                    <div>
+                      <p className="font-bold text-gray-800">{loan.borrower_name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        <i className="fas fa-phone mr-1"></i>{loan.phone || '-'} &nbsp;|&nbsp;
+                        <i className="fas fa-map-marker-alt mr-1"></i>{loan.address || '-'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 ml-4">
+                      <p className="text-lg font-bold text-red-600">{formatCurrency(balance)}</p>
+                      <p className="text-xs text-red-500">Interest Pending</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 shrink-0">
+              <Button variant="outline" className="w-full" onClick={() => setIsOverdueModalOpen(false)}>Close</Button>
             </div>
           </div>
         </div>
