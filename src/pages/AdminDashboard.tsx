@@ -42,7 +42,7 @@ export function AdminDashboard() {
     { path: '/admin', label: 'Dashboard', icon: 'fas fa-home' },
     { path: '/admin/members', label: 'Members', icon: 'fas fa-users' },
     { path: '/admin/transactions', label: 'Transactions', icon: 'fas fa-rupee-sign' },
-    { path: '/admin/loans', label: 'Loans', icon: 'fas fa-hand-holding-usd' },
+    { path: '/admin/loans', label: 'Member Loans', icon: 'fas fa-hand-holding-usd' },
     { path: '/admin/investments', label: 'Investments', icon: 'fas fa-chart-line' },
     { path: '/admin/emi', label: 'Product EMI', icon: 'fas fa-mobile-alt' },
     { path: '/admin/reports', label: 'Reports', icon: 'fas fa-chart-bar' },
