@@ -220,6 +220,31 @@ export function Members() {
     }
   };
 
+  const handleExportCSV = () => {
+    const headers = ['SL No', 'Member ID', 'Member Name', 'Monthly Installment'];
+    const rows = filteredMembers.map((member, index) => [
+      index + 1,
+      member.member_code || '',
+      member.profiles?.full_name || '',
+      member.monthly_installment ?? '',
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `members-list-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const uploadPhotoIfNeeded = async (): Promise<string> => {
     if (!photoFile) return photoUrl;
     const fileExt = photoFile.name.split('.').pop();
@@ -366,6 +391,9 @@ export function Members() {
         <div className="flex flex-col sm:flex-row gap-3">
           <Button onClick={() => setIsImportModalOpen(true)} variant="outline" className="gap-2 border-[#1e5a48] text-[#1e5a48] hover:bg-[#1e5a48] hover:text-white">
             <i className="fas fa-file-excel"></i> Import Excel
+          </Button>
+          <Button onClick={handleExportCSV} variant="outline" className="gap-2 border-[#1e5a48] text-[#1e5a48] hover:bg-[#1e5a48] hover:text-white">
+            <i className="fas fa-file-csv"></i> Export CSV
           </Button>
           <Button onClick={openAddModal} className="gap-2">
             <i className="fas fa-user-plus"></i> Add New Member
