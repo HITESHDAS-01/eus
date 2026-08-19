@@ -1,0 +1,25 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Har 5 din mein run hota hai (Supabase free tier 7 din baad pause karta hai)
+    - cron: '0 0 */5 * *'
+  workflow_dispatch: # Manual trigger bhi enable
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        run: |
+          echo "Supabase project ko ping kar rahe hai..."
+          curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/?limit=1"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Supabase project active hai!"
+          else
+            echo "❌ Supabase ping failed"
+            exit 1
+          fi
