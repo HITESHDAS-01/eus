@@ -2,9 +2,8 @@ name: Supabase Keep-Alive
 
 on:
   schedule:
-    # Har din raat 12 baje run hota hai
     - cron: '0 0 * * *'
-  workflow_dispatch: # Manual trigger bhi enable
+  workflow_dispatch:
 
 jobs:
   keep-alive:
@@ -20,8 +19,8 @@ jobs:
           echo "HTTP Response: $HTTP_CODE"
           
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 206 ]; then
-            echo "✅ Supabase project active hai!"
+            echo "Supabase project active hai!"
           else
-            echo "❌ Supabase ping failed with HTTP code: $HTTP_CODE"
+            echo "Supabase ping failed with HTTP code: $HTTP_CODE"
             exit 1
           fi
