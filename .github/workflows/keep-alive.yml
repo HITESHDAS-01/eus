@@ -13,13 +13,15 @@ jobs:
       - name: Ping Supabase
         run: |
           echo "Supabase project ko ping kar rahe hai..."
-          curl -s -o /dev/null -w "%{http_code}" \
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/?limit=1"
+            "${{ secrets.SUPABASE_URL }}/rest/v1/?limit=1")
           
-          if [ $? -eq 0 ]; then
+          echo "HTTP Response: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 206 ]; then
             echo "✅ Supabase project active hai!"
           else
-            echo "❌ Supabase ping failed"
+            echo "❌ Supabase ping failed with HTTP code: $HTTP_CODE"
             exit 1
           fi
